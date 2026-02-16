@@ -1,1 +1,2 @@
 /data/*
+!data/gene_info_table.csv
