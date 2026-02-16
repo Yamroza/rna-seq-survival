@@ -4,9 +4,6 @@
 [submodule "papers/GeneBag"]
 	path = papers/GeneBag
 	url = https://github.com/transomics/GeneBag.git
-[submodule "repo"]
-	path = repo
-	url = https://github.com/aeijpe/TS_Survival_Prediction.git
 [submodule "papers/scgpt"]
 	path = papers/scgpt
 	url = https://github.com/bowang-lab/scGPT.git
