@@ -1,0 +1,15 @@
+src/results/
+src/logs/
+
+__pycache__/
+**/.DS_store/
+.DS_store
+
+# Ignore rna data files
+src/data/files/*/rna_data.csv
+src/data/files/*/HiSeqV2_PANCAN_*
+src/data/files/*/splits/*/scaler_rna_data.pkl
+src/data/files/*/splits/*/scaler_*
+src/data/files/*/splits/*/test_filtered*
+src/data/files/*/splits/*/train_filtered*
+src/data/files/*/clinical_data_*
