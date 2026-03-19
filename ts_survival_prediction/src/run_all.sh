@@ -6,7 +6,7 @@ conda activate myenv
 echo "Using python from:"
 which python
 
-EXPR_PATH="/scratch/2370352/my-research/data/scgpt_embeddings/new_lengths"
+EXPR_PATH="/scratch/2370352/my-research/data/scgpt_embeddings/means_expert"
 # 0_data_for_mlp"
 #scgpt_embeddings"
 
@@ -16,7 +16,7 @@ TASK="dss_survival_brca"
 
 # mlp snn pathway_mlp pathway_snn gene_dimaf
 MODEL="mlp"
-EXP_CODE="mlp_hvg"
+EXP_CODE="mlp_expert"
 
 # NETWORK_SIZE="big"
 # AGGREGATION_TYPE="concat"

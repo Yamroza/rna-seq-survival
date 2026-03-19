@@ -71,7 +71,7 @@ class MixupSingleCellDataset(Dataset):
         return oh
     
     def __getitem__(self, idx):
-        # Zwróć indeks – embeddingi robimy batchami przez scGPT
+        # Zwróć indeks - embeddingi robimy batchami przez scGPT
         return idx
 
 
@@ -355,7 +355,7 @@ def plot_training_curves(history, output_dir):
 
 
 # ─────────────────────────────────────────────
-# 6. INFERENCE – embeddingi dla bulk RNA-seq
+# 6. INFERENCE - embeddingi dla bulk RNA-seq
 # ─────────────────────────────────────────────
 
 def embed_bulk_with_mlp_a(
@@ -366,7 +366,7 @@ def embed_bulk_with_mlp_a(
     gene_col: str = "gene_name",
     hidden_dim: int = 128,
     n_classes: int = 17,
-    n_random_runs: int = 20,   # Twój MoE trick – ile losowań
+    n_random_runs: int = 20,   # Twój MoE trick - ile losowań
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ):
     """
@@ -378,7 +378,7 @@ def embed_bulk_with_mlp_a(
     Zwraca DataFrame z embeddingami.
     """
     # Wczytaj MLP-A
-    # Najpierw musimy wiedzieć embed_dim – pobierz jedną próbkę
+    # Najpierw musimy wiedzieć embed_dim - pobierz jedną próbkę
     sample_emb = get_scgpt_embeddings_batch(
         bulk_adata[:2], model_dir, gene_col=gene_col, batch_size=2
     )
