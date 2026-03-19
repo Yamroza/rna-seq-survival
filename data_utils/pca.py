@@ -12,12 +12,12 @@ for n_components in n_components_list:
     for hvg in hvg_list:
         if hvg > 0:
             variances = df.var(axis=0)
-            top_genes = variances.sort_values(ascending=False).head(3000).index
+            top_genes = variances.sort_values(ascending=False).head(hvg).index
             df_x = df[top_genes]
         else:
             df_x = df
 
-        X = df.values  # macierz (n_samples, n_genes)
+        X = df_x.values  # macierz (n_samples, n_genes)
         
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
