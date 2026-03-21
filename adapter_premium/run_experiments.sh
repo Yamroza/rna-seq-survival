@@ -14,7 +14,7 @@ for LR in "${LRS[@]}"; do
             echo "Running job: $JOB_NAME"
             
             sbatch --job-name=$JOB_NAME \
-                   --export=ALL,LR=$LR,HIDDEN="$HIDDEN",SEQ_LENGTH=$SEQ_LENGTH \
+                   --export=ALL,LR=$LR,HIDDEN="$HIDDEN",SEQ_LENGTH=$SEQ \
                    run_pipeline.sh
             
             sleep 1
