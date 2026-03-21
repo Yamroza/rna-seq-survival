@@ -120,3 +120,28 @@ def eval_epoch(model, loader, device):
         total      += len(label_main)
 
     return total_loss / len(loader), correct / total
+
+
+def load_trained_model(checkpoint_path, scgpt_model, num_classes=7, device='cuda'):
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    saved_config = checkpoint['config']
+    
+    head_model = MLPClassifier(
+        input_dim=saved_config.get('emb_dim', 512), 
+        num_classes=num_classes,
+        hidden_dims=saved_config.get('hidden_dims', [512, 256]),
+        dropout=saved_config['dropout']
+    )
+    model = scGPTClassifier(
+        scgpt_model, 
+        head_model, 
+        num_classes=num_classes, 
+        dropout=saved_config['dropout']
+    )
+
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    model.to(device)
+    model.eval()
+    
+    return model, saved_config

@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--batch_size", type=int,   default=64)
     parser.add_argument("--dropout",    type=float, default=0.1)
     parser.add_argument("--dataset",    type=str, default='bulkDataset')
+    parser.add_argument("--seq_length", type=int, default=2000)
+    parser.add_argument('--hidden_dims',type=int, nargs='+', default=[512, 256])
     
     # Debugowanie / Szybkie testy
     parser.add_argument("--subset",     type=int,   default=None, help="Loader size for debbuging")
@@ -35,8 +37,7 @@ def main():
     args = parser.parse_args()
 
     # ── WANDB SETUP ───────────────────────────────────────────────────────────
-    # Logujemy wszystkie argumenty z parsera do wandb
-    wandb.init(project="scGPT-classification", config=vars(args))
+    wandb.init(project="survival-prediction-with-adapters", config=vars(args))
     config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,7 +54,7 @@ def main():
         'bulkDataset': bulkDataset,
     }
 
-    dataset = dataset_dict[config.dataset](adata, vocab)
+    dataset = dataset_dict[config.dataset](adata, vocab, max_genes=config.seq_length)
 
     if config.subset is not None:
         indices = np.random.choice(len(dataset), min(config.subset, len(dataset)), replace=False)
@@ -70,7 +71,7 @@ def main():
     # ── MODEL & OPTIMIZER ─────────────────────────────────────────────────────
     num_classes = len(adata.obs['cell_type'].unique()) # Zakładam, że tak masz etykiety
 
-    head_model = MLPClassifier(512, num_classes, [512, 256], config.dropout).to(device)
+    head_model = MLPClassifier(512, num_classes, config.hidden_dims, config.dropout).to(device)
     model = scGPTClassifier(scgpt_model, head_model, num_classes=num_classes, dropout=config.dropout).to(device)
 
     optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=config.lr, weight_decay=1e-2)
@@ -88,12 +89,12 @@ def main():
               f"Loss: {train_res['loss']:.4f} | Val Acc: {val_acc:.3f}")
 
         wandb.log({
-            "epoch": epoch + 1,
-            "train/loss": train_res["loss"],
-            "train/acc_main": train_res["acc_main"],
-            "val/loss": val_loss,
-            "val/acc": val_acc,
-            "lr": optimizer.param_groups[0]['lr']
+            "adapter/epoch": epoch + 1,
+            "adapter/train/loss": train_res["loss"],
+            "adapter/train/acc_main": train_res["acc_main"],
+            "adapter/val/loss": val_loss,
+            "adapter/val/acc": val_acc,
+            "adapter/lr": optimizer.param_groups[0]['lr']
         })
 
         if val_acc > best_val_acc:
