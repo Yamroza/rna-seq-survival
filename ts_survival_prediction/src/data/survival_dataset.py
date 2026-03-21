@@ -35,6 +35,7 @@ class RNASurvivalDataset(Dataset):
         # Data source
         self.data_source = args.data_source
         self.split_dir = os.path.join(self.data_source, f'splits/{self.fold}/')
+        self.data_type = args.data_type
 
         # RNA args
         self.omics_type = args.omics_type
@@ -99,8 +100,15 @@ class RNASurvivalDataset(Dataset):
         # Read RNA data
         self.feat_dir_rna = os.path.join(self.expression_data_path, f"{self.omics_type}")
         if os.path.isfile(self.feat_dir_rna):
-            self.df_rna = pd.read_csv(self.feat_dir_rna, engine='python')#, index_col=0)
-            self.df_rna = self.df_rna.rename(columns={'Unnamed: 0': 'case_id'})
+            if self.data_type == 'csv':
+                self.df_rna = pd.read_csv(self.feat_dir_rna, engine='python')#, index_col=0)
+                self.df_rna = self.df_rna.rename(columns={'Unnamed: 0': 'case_id'})
+            elif self.data_type == 'json':
+                df_raw = pd.read_json(self.feat_dir_rna, lines=True)
+                self.df_rna = pd.concat([
+                    df_raw[['id']].rename(columns={'id': 'case_id'}), 
+                    pd.DataFrame(df_raw['embedding'].tolist())
+                ], axis=1)
         else:
             raise FileNotFoundError(f"{self.feat_dir_rna} not found!")
         

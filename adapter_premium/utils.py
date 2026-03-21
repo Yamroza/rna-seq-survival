@@ -5,15 +5,11 @@ sys.path.append(os.path.abspath(".."))
 
 import json
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Union
 
 import anndata as ad
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
 
 scgpt_root = os.path.abspath("../papers/scgpt")
 if scgpt_root not in sys.path:

@@ -1,0 +1,8 @@
+.env
+data
+data_new
+embeddings
+checkpoints
+__pycache__
+logs
+wandb

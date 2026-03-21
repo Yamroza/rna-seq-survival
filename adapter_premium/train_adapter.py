@@ -10,8 +10,9 @@ from torch.utils.data import DataLoader, Subset
 # Twoje moduły
 sys.path.append(os.path.abspath(".."))
 from utils import get_scgpt_model
-from premium_datasets import bulkDataset, collate_fn
-from adapters import scGPTClassifier, train_epoch, eval_epoch
+from premium_datasets import scDataset, bulkDataset, collate_fn
+from adapters import scGPTClassifier, train_epoch, eval_epoch, MLPClassifier
+
 
 def main():
     # ── ARGUMENT PARSER ───────────────────────────────────────────────────────
@@ -26,6 +27,7 @@ def main():
     parser.add_argument("--epochs",     type=int,   default=20)
     parser.add_argument("--batch_size", type=int,   default=64)
     parser.add_argument("--dropout",    type=float, default=0.1)
+    parser.add_argument("--dataset",    type=str, default='bulkDataset')
     
     # Debugowanie / Szybkie testy
     parser.add_argument("--subset",     type=int,   default=None, help="Loader size for debbuging")
@@ -46,7 +48,13 @@ def main():
     print(f"Loading data from {config.data_path}...")
     adata = ad.read_h5ad(config.data_path)
 
-    dataset = bulkDataset(adata, vocab)
+    dataset_dict = {
+        'scDataset': scDataset,
+        'bulkDataset': bulkDataset,
+    }
+
+    dataset = dataset_dict[config.dataset](adata, vocab)
+
     if config.subset is not None:
         indices = np.random.choice(len(dataset), min(config.subset, len(dataset)), replace=False)
         dataset = Subset(dataset, indices)
@@ -61,7 +69,9 @@ def main():
 
     # ── MODEL & OPTIMIZER ─────────────────────────────────────────────────────
     num_classes = len(adata.obs['cell_type'].unique()) # Zakładam, że tak masz etykiety
-    model = scGPTClassifier(scgpt_model, num_classes=num_classes, dropout=config.dropout).to(device)
+
+    head_model = MLPClassifier(512, num_classes, [512, 256], config.dropout).to(device)
+    model = scGPTClassifier(scgpt_model, head_model, num_classes=num_classes, dropout=config.dropout).to(device)
 
     optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=config.lr, weight_decay=1e-2)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.epochs)

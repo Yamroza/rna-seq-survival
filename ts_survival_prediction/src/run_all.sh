@@ -6,7 +6,9 @@ conda activate myenv
 echo "Using python from:"
 which python
 
-EXPR_PATH="/scratch/2370352/my-research/data/1_data_for_mlp_ica"
+# EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp_hvg_new"
+EXPR_PATH="/scratch/2370352/my-research/adapter_premium/embeddings"
+DATA_TYPE='json'
 # 0_data_for_mlp"
 #scgpt_embeddings"
 
@@ -16,7 +18,7 @@ TASK="dss_survival_brca"
 
 # mlp snn pathway_mlp pathway_snn gene_dimaf
 MODEL="mlp"
-EXP_CODE="mlp_ica"
+EXP_CODE="adapter_premium"
 
 # NETWORK_SIZE="big"
 # AGGREGATION_TYPE="concat"
@@ -36,6 +38,7 @@ for file in "$EXPR_PATH"/*; do
         --data_source $DATA_SOURCE \
         --exp_code $EXP_CODE \
         --omics_type "$omics_type" \
+        --data_type $DATA_TYPE \
         --folds 5 \
         --expression_data_path "$EXPR_PATH"
 
@@ -46,6 +49,7 @@ for file in "$EXPR_PATH"/*; do
         --mode test \
         --task $TASK \
         --data_source $DATA_SOURCE \
+        --data_type $DATA_TYPE \
         --exp_code $EXP_CODE \
         --omics_type "$omics_type" \
         --expression_data_path "$EXPR_PATH"

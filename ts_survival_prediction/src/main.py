@@ -107,6 +107,7 @@ if __name__ == "__main__":
     parser.add_argument('--data_source', type=str, default='data/files/tcga_brca/', help='manually specify the data source')
     parser.add_argument('--expression_data_path', type=str)
     parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--data_type', type=str, default='csv')
 
     # logging args
     parser.add_argument('--result_dir', default='results',help='results directory')

@@ -20,15 +20,21 @@ class MLPClassifier(nn.Module):
         
         layers.append(nn.Linear(prev_dim, num_classes))
         self.net = nn.Sequential(*layers)
-    
-    def forward(self, x: torch.Tensor) -> dict:
+
+    def forward(self, x: torch.Tensor, return_embedding: bool = False) -> dict:
+        if return_embedding:
+            hidden_features = self.net[:-1](x)
+            return {"embedding": hidden_features}
+
         logits = self.net(x)
         probs  = torch.softmax(logits, dim=-1)
         return {"logits": logits, "probs": probs}
 
+
+# TODO zmieniń nazwe na lepszą
 # ── SCGPT + MLP ───────────────────────────────────────────────────────────────
 class scGPTClassifier(nn.Module):
-    def __init__(self, scgpt_model, num_classes: int, emb_dim: int = 512,
+    def __init__(self, scgpt_model, head_model, num_classes: int, emb_dim: int = 512,
                  hidden_dims: list[int] = [512, 256], dropout: float = 0.1):
         super().__init__()
 
@@ -36,15 +42,15 @@ class scGPTClassifier(nn.Module):
         for param in self.encoder.parameters():
             param.requires_grad = False
 
-        self.classifier = MLPClassifier(emb_dim, num_classes, hidden_dims, dropout)
+        self.classifier = head_model
 
     @torch.no_grad()
     def encode(self, src, values, mask):
         return self.encoder(src, values, src_key_padding_mask=mask)  # (B, emb_dim)
 
-    def forward(self, src, values, mask):
+    def forward(self, src, values, mask, return_embedding=False):
         emb = self.encode(src, values, mask)["cell_emb"]
-        return self.classifier(emb)
+        return self.classifier(emb, return_embedding)
 
 
 # ── MIXUP LOSS ────────────────────────────────────────────────────────────────
