@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+import wandb
 
 from torch.utils.tensorboard import SummaryWriter
 from sksurv.metrics import concordance_index_censored
@@ -57,6 +58,13 @@ def survival_train(args, fold, device):
         print('#' * 10, f'TRAIN Epoch: {epoch}', '#' * 10)
         train_results, train_data_info = train_loop(model, train_dl, optimizer, lr_scheduler, device)
         log_results(writer, train_results, epoch, mode='train')
+
+        wandb.log({
+            f"survival_train_fold_{fold}/epoch": epoch + 1,
+            f"survival_train_fold_{fold}/loss": train_results["loss"],
+            f"survival_train_fold_{fold}/c_index": train_results["c_index"],
+            f"survival_train_fold_{fold}/lr": train_results["lr"],
+        })
         
         # Save last model
         torch.save(model.state_dict(), os.path.join(result_dir_fold, "model_checkpoint.pth"))

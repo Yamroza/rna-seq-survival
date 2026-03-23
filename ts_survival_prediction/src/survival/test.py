@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+import wandb
 
 from model.model_factory import obtain_model
 from survival.losses import CoxLoss
@@ -95,7 +96,13 @@ def survival_test(args, fold, device):
 
     # Test the model
     results = test(model, test_dl, device, survival_info_train=train_data_info, result_dir_scores=result_dir_fold)
+
+    wandb.log({
+        "survival_test/fold": fold,
+        "survival_test/loss": results["loss"],
+        "survival_test/c_index": results["c_index"],
+        "survival_test/c_index_ipcw": results["c_index_ipcw"],
+    })
+
     save_json(result_dir_fold, f"test_summary.json", results)
     return results
-
-

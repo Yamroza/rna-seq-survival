@@ -3,6 +3,7 @@ import sys
 import os 
 import torch 
 import numpy as np
+import wandb
 
 from utils.general_utils import set_seed, save_json
 from utils.train_utils import save_exp_settings
@@ -56,6 +57,8 @@ def k_fold_train(args, device):
     
 def main(args):
     """ K-fold cross-validation for Survival Prediction """
+    wandb.init(project="survival-prediction-with-adapters", config=vars(args))
+
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -72,7 +75,7 @@ def main(args):
         sys.exit("Unspecified mode! Abborting..")
     
     print("FINISHED!\n\n\n")
-    
+    wandb.finish()
     
 
 if __name__ == "__main__":
@@ -115,4 +118,5 @@ if __name__ == "__main__":
     parser.add_argument('--exp_code', type=str, default='test', help='experiment code for saving results')
 
     args = parser.parse_args()
+
     main(args)
