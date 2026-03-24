@@ -86,7 +86,7 @@ class scDataset(Dataset):
         mask = torch.zeros(len(src), dtype=torch.bool)
         label = torch.tensor(self.labels[idx], dtype=torch.long)
 
-        return src, values, mask, label
+        return src, values, mask, label, ('lambda_')
     
 
 class bulkDataset(Dataset):
