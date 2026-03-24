@@ -68,17 +68,17 @@
 
 import torch
 import torch.nn as nn
-
 from model.layers import MLP_Block, SNN_Block
 
 class FNN(nn.Module):
-    """ Gene-level Feedforward Neural Network (FNN) for Survival Prediction. """
-    def __init__(self, rna_dims, block_type, hidden_layers, loss_fn, num_classes=1, dropout=0.5):
+    """ Gene-level Feedforward Neural Network (FNN) with L1 Regularization support. """
+    def __init__(self, rna_dims, block_type, hidden_layers, loss_fn, num_classes=1, dropout=0.5, l1_reg=1e-5):
         super().__init__()
         self.input_dim = rna_dims
         self.num_classes = num_classes
         self.loss_fn = loss_fn
-        self.block_name = block_type # Zapisujemy nazwę dla wyboru typu dropoutu
+        self.block_name = block_type
+        self.l1_reg = l1_reg # Siła regularyzacji L1 (np. 1e-4 lub 1e-5)
         
         if block_type == 'mlp':
             self.block_type = MLP_Block
@@ -90,60 +90,56 @@ class FNN(nn.Module):
         self.init_architecture(hidden_layers, dropout)
 
     def init_architecture(self, hidden_layers, dropout):
-        """ Initialize the architecture of the FNN. """
-        
         fc_layers = []
         prev_dim = self.input_dim
         
         for curr_dim in hidden_layers:
-            # Add main block and dropout
             fc_layers.append(self.block_type(in_dim=prev_dim, out_dim=curr_dim))
             if dropout > 0.0:
                 if self.block_name == 'snn':
                     fc_layers.append(nn.AlphaDropout(p=dropout))
                 else:
                     fc_layers.append(nn.Dropout(p=dropout))
-            
             prev_dim = curr_dim
 
         self.fc_layers = nn.Sequential(*fc_layers)
-        
-        # Ostatnia warstwa klasyfikatora (bez dropoutu na samym wyjściu)
         self.classifier = nn.Linear(prev_dim, self.num_classes, bias=False)
 
     def forward_no_loss(self, x):
-        """ Forward pass without computing the loss. """
-        # Obtain representation
         h_emb = self.fc_layers(x)
-        # Predict risk score
-        logits  = self.classifier(h_emb)
+        logits = self.classifier(h_emb)
         return logits
 
     def forward(self, x, label, censorship):
-        """ Main forward function. """
-        # Forward pass
         output = self.forward_no_loss(x)
-
-        # Compute the loss
         output_results, output_log = self.compute_loss(output, label, censorship)
+
+        # Dodanie kary L1 ---
+        if self.training and self.l1_reg > 0:
+            l1_penalty = self.compute_l1_penalty()
+            output_results['loss'] += l1_penalty
+            output_log['l1_penalty'] = l1_penalty.item()
 
         return output_results, output_log
     
+    def compute_l1_penalty(self):
+        """ 
+        Oblicza sumę wartości bezwzględnych wag PIERWSZEJ warstwy. 
+        To wymusza na modelu wybór tylko najważniejszych genów na wejściu.
+        """
+        # Dobieramy się do wag pierwszej warstwy w Sequential
+        # Zakładamy, że pierwszy element w fc_layers to Twój MLP_Block/SNN_Block
+        first_layer_weights = next(self.fc_layers[0].parameters())
+        return self.l1_reg * torch.norm(first_layer_weights, 1)
+
     def compute_loss(self, logits, label, censorship):
-        """Compute the loss given the output of the model. Supports CoxPH loss."""
         results_dict = {'logits': logits}
-        
-        # Compute the coxPH loss
         total_loss, log_dict = self.loss_fn(logits=logits, times=label, censorships=censorship)
         risk = torch.exp(logits)
         results_dict['risk'] = risk
         results_dict['loss'] = total_loss
-
         return results_dict, log_dict
 
     def from_pretrained(self, cp_path, device):
-        # Load weights fro pretrained model
         state_dict = torch.load(cp_path, map_location=device)
-
-        # Load the weights into the model
         self.load_state_dict(state_dict)
