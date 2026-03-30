@@ -31,8 +31,8 @@ SEQ_LENGTH=${SEQ_LENGTH:-2000}
 BATCH_SIZE=128
 EPOCHS=20
 DROPOUT=0.5
-DATA_PATH="data_new/train.h5ad"
-DATASET="bulkDataset"
+DATA_PATH="data_new/blkb_common_train.h5ad"
+DATASET="donorDataset"
 
 SAVE_NAME="best_scgpt_lr_${LR}_bs_${BATCH_SIZE}_ep_${EPOCHS}_drop_${DROPOUT}_seqlen_${SEQ_LENGTH}_hiddims_${HIDDEN// /_}.pt"
 SAVE_PATH="checkpoints/${SAVE_NAME}"

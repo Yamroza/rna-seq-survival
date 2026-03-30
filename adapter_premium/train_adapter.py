@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(".."))
 from utils import get_scgpt_model
 from premium_datasets import scGPTDataset, collate_fn
 from adapters import scGPTClassifier, train_epoch, eval_epoch, MLPClassifier
-from mixers import NoMixer, LinearTwoCellMixer, MultiCellMixer
+from mixers import NoMixer, LinearTwoCellMixer, MultiCellMixer, DynamicDonorMixer
 
 
 def main():
@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--batch_size", type=int,   default=64)
     parser.add_argument("--dropout",    type=float, default=0.1)
     parser.add_argument("--dataset",    type=str, default='bulkDataset')
+    parser.add_argument("--n_cells",    type=int, default=8)
     parser.add_argument("--seq_length", type=int, default=2000)
     parser.add_argument('--hidden_dims',type=int, nargs='+', default=[512, 256])
     
@@ -53,11 +54,11 @@ def main():
     mixer_dict = {
         'scDataset': NoMixer(),
         'bulkDataset': LinearTwoCellMixer(),
-        '3dataset' : MultiCellMixer()
+        '3dataset' : MultiCellMixer(),
+        'donorDataset': DynamicDonorMixer(adata, donor_col="donor_id", n_cells=config.n_cells)
     }
 
     dataset = scGPTDataset(adata, vocab, mixer=mixer_dict[config.dataset], max_genes=config.seq_length)
-    print(dataset)
     if config.subset is not None:
         indices = np.random.choice(len(dataset), min(config.subset, len(dataset)), replace=False)
         dataset = Subset(dataset, indices)
