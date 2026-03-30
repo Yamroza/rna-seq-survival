@@ -12,7 +12,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(".."))
 from utils import get_scgpt_model, binning
-from premium_datasets import scDataset, bulkDataset, predictionDataset, collate_fn
+from premium_datasets import scGPTDataset, predictionDataset, collate_fn
 from adapters import scGPTClassifier, MLPClassifier, train_epoch, eval_epoch, load_trained_model
 
 
@@ -40,8 +40,6 @@ def main():
     df = pd.read_csv(config.data_path)
 
     dataset_dict = {
-        'scDataset': scDataset,
-        'bulkDataset': bulkDataset,
         'predictionDataset': predictionDataset
     }
 

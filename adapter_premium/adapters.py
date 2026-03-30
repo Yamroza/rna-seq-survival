@@ -65,42 +65,70 @@ def mixup_loss(logits, labels, lambda_):
     loss_random = criterion(logits, labels[1])
     return (lambda_ * loss_main + (1 - lambda_) * loss_random).mean()
 
+def universal_mixup_loss(logits, labels, lambdas):
+    # Wymuś, żeby oba miały min. 2 wymiary (Batch, N)
+    if labels.dim() == 1:
+        labels = labels.unsqueeze(1)
+    if lambdas.dim() == 1:
+        lambdas = lambdas.unsqueeze(1)
+
+    # ZABEZPIECZENIE: num_mixed musi być mniejsze lub równe liczbie kolumn w obu tensorach
+    num_mixed = min(labels.shape[1], lambdas.shape[1])
+    batch_size = logits.shape[0]
+    
+    total_loss = torch.zeros(batch_size, device=logits.device)
+    criterion = nn.CrossEntropyLoss(reduction="none")
+
+    for i in range(num_mixed):
+        curr_labels = labels[:, i].long()
+        curr_lambdas = lambdas[:, i]
+        
+        loss_comp = criterion(logits, curr_labels)
+        total_loss += curr_lambdas * loss_comp
+        
+    return total_loss.mean()
+
 
 # ── TRAIN EPOCH ───────────────────────────────────────────────────────────────
 def train_epoch(model, loader, optimizer, device):
     model.train()
-    model.encoder.eval()
+    if hasattr(model, "encoder"):
+        model.encoder.eval()
 
     total_loss = 0
-    correct_main, correct_rand, total = 0, 0, 0
+    correct_main, total = 0, 0
 
-    for src, values, mask, labels, lambda_ in tqdm(loader):
-        src, values, mask = src.to(device), values.to(device), mask.to(device)
+    for src, values, mask, labels, lambdas in tqdm(loader):
+        # Przenoszenie na device (labels i lambdas to tensory B x N)
+        src = src.to(device)
+        values = values.to(device)
+        mask = mask.to(device)
+        labels = labels.to(device)
+        lambdas = lambdas.to(device)
 
-        lab1 = torch.tensor([l[0] for l in labels]).to(device)
-        lab2 = torch.tensor([l[1] for l in labels]).to(device)
-        labels = (lab1, lab2)
-        lambda_tensor = torch.tensor(lambda_, dtype=torch.float32).to(device)
-
-        out  = model(src, values, mask)
-        loss = mixup_loss(out["logits"], labels, lambda_tensor)
-
+        # Forward i Loss
         optimizer.zero_grad()
+        out = model(src, values, mask)
+        logits = out["logits"]
+        
+        # universal_mixup_loss sam iteruje po wszystkich etykietach w labels
+        loss = universal_mixup_loss(logits, labels, lambdas)
+
         loss.backward()
         optimizer.step()
 
-        preds = out["logits"].argmax(-1)
-        total_loss   += loss.item()
-        correct_main += (preds == lab1).sum().item()
-        correct_rand += (preds == lab2).sum().item()
-        total        += len(labels[0])
+        # Statystyki - tylko dla głównej etykiety (indeks 0)
+        with torch.no_grad():
+            preds = logits.argmax(-1)
+            lab_main = labels[:, 0]
+            correct_main += (preds == lab_main).sum().item()
+            total += lab_main.size(0)
+            total_loss += loss.item()
 
     return {
-        "loss":     total_loss / len(loader),
-        "acc_main": correct_main / total,
-        "acc_rand": correct_rand / total,
+        "loss": total_loss / len(loader),
+        "acc":  correct_main / total,
     }
-
 
 # ── EVAL EPOCH ────────────────────────────────────────────────────────────────
 @torch.no_grad()

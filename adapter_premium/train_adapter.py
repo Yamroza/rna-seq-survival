@@ -10,13 +10,14 @@ from torch.utils.data import DataLoader, Subset
 # Twoje moduły
 sys.path.append(os.path.abspath(".."))
 from utils import get_scgpt_model
-from premium_datasets import scDataset, bulkDataset, collate_fn
+from premium_datasets import scGPTDataset, collate_fn
 from adapters import scGPTClassifier, train_epoch, eval_epoch, MLPClassifier
+from mixers import NoMixer, LinearTwoCellMixer, MultiCellMixer
 
 
 def main():
     # ── ARGUMENT PARSER ───────────────────────────────────────────────────────
-    parser = argparse.ArgumentParser(description="scGPT Fine-tuning Script")
+    parser = argparse.ArgumentParser(description="scGPT adapter training script")
     
     parser.add_argument("--model_path", type=str, default="../papers/scgpt/save/whole_human")
     parser.add_argument("--data_path",  type=str, default="data_new/train.h5ad")
@@ -49,13 +50,14 @@ def main():
     print(f"Loading data from {config.data_path}...")
     adata = ad.read_h5ad(config.data_path)
 
-    dataset_dict = {
-        'scDataset': scDataset,
-        'bulkDataset': bulkDataset,
+    mixer_dict = {
+        'scDataset': NoMixer(),
+        'bulkDataset': LinearTwoCellMixer(),
+        '3dataset' : MultiCellMixer()
     }
 
-    dataset = dataset_dict[config.dataset](adata, vocab, max_genes=config.seq_length)
-
+    dataset = scGPTDataset(adata, vocab, mixer=mixer_dict[config.dataset], max_genes=config.seq_length)
+    print(dataset)
     if config.subset is not None:
         indices = np.random.choice(len(dataset), min(config.subset, len(dataset)), replace=False)
         dataset = Subset(dataset, indices)
@@ -79,7 +81,7 @@ def main():
 
     # ── TRAINING LOOP ─────────────────────────────────────────────────────────
     best_val_acc = 0.0
-    
+    print(config.epochs)
     for epoch in range(config.epochs):
         train_res = train_epoch(model, train_loader, optimizer, device)
         val_loss, val_acc = eval_epoch(model, val_loader, device)
