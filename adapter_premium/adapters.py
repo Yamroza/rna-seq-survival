@@ -1,7 +1,7 @@
 from tqdm import tqdm
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class MLPClassifier(nn.Module):
     def __init__(self, input_dim: int, num_classes: int, hidden_dims: list[int] = [512, 256], dropout: float = 0.1):
@@ -66,27 +66,35 @@ def mixup_loss(logits, labels, lambda_):
     return (lambda_ * loss_main + (1 - lambda_) * loss_random).mean()
 
 def universal_mixup_loss(logits, labels, lambdas):
-    # Wymuś, żeby oba miały min. 2 wymiary (Batch, N)
+    # Upewnij się, że mają wymiar [B, N]
     if labels.dim() == 1:
         labels = labels.unsqueeze(1)
     if lambdas.dim() == 1:
         lambdas = lambdas.unsqueeze(1)
 
-    # ZABEZPIECZENIE: num_mixed musi być mniejsze lub równe liczbie kolumn w obu tensorach
-    num_mixed = min(labels.shape[1], lambdas.shape[1])
-    batch_size = logits.shape[0]
-    
-    total_loss = torch.zeros(batch_size, device=logits.device)
-    criterion = nn.CrossEntropyLoss(reduction="none")
+    B, C = logits.shape
+    N = min(labels.shape[1], lambdas.shape[1])
 
-    for i in range(num_mixed):
-        curr_labels = labels[:, i].long()
-        curr_lambdas = lambdas[:, i]
-        
-        loss_comp = criterion(logits, curr_labels)
-        total_loss += curr_lambdas * loss_comp
-        
-    return total_loss.mean()
+    labels = labels[:, :N]
+    lambdas = lambdas[:, :N]
+
+    # Tworzymy soft target: [B, C]
+    soft_targets = torch.zeros(B, C, device=logits.device)
+
+    # Zamieniamy labels -> one-hot i ważymy lambdami
+    soft_targets.scatter_add_(
+        dim=1,
+        index=labels.long(),
+        src=lambdas
+    )
+
+    # log_softmax zamiast wielu CrossEntropy
+    log_probs = F.log_softmax(logits, dim=1)
+
+    # Soft cross-entropy
+    loss = -(soft_targets * log_probs).sum(dim=1)
+
+    return loss.mean()
 
 
 # ── TRAIN EPOCH ───────────────────────────────────────────────────────────────
@@ -112,22 +120,36 @@ def train_epoch(model, loader, optimizer, device):
         logits = out["logits"]
         
         # universal_mixup_loss sam iteruje po wszystkich etykietach w labels
-        loss = universal_mixup_loss(logits, labels, lambdas)
-
+        loss = universal_mixup_loss(logits, labels, lambdas)        
         loss.backward()
         optimizer.step()
 
-        # Statystyki - tylko dla głównej etykiety (indeks 0)
+        # Statystyki - Soft Accuracy uwzględniające wszystkie klasy z Mixupu
         with torch.no_grad():
-            preds = logits.argmax(-1)
-            lab_main = labels[:, 0]
-            correct_main += (preds == lab_main).sum().item()
-            total += lab_main.size(0)
+            preds = logits.argmax(-1) # Kształt: [Batch]
+            batch_size = preds.size(0)
+            num_mixed = labels.shape[1]
+            
+            batch_soft_correct = 0.0
+            
+            # Sprawdzamy trafienia dla każdej domieszkanej klasy
+            for i in range(num_mixed):
+                curr_labels = labels[:, i]
+                curr_lambdas = lambdas[:, i]
+                
+                # Gdzie predykcja zgadza się z i-tą etykietą (0 lub 1)
+                match = (preds == curr_labels).float()
+                
+                # Mnożymy trafienia przez wagę (lambdę) tej klasy
+                batch_soft_correct += (match * curr_lambdas).sum().item()
+                
+            correct_main += batch_soft_correct # Używamy starej zmiennej, albo zmień nazwę na soft_correct
+            total += batch_size
             total_loss += loss.item()
 
     return {
         "loss": total_loss / len(loader),
-        "acc":  correct_main / total,
+        "acc": correct_main / total,
     }
 
 # ── EVAL EPOCH ────────────────────────────────────────────────────────────────

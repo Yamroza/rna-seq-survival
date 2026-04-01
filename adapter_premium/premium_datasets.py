@@ -95,13 +95,12 @@ class scGPTDataset(Dataset):
 
 
 def collate_fn(batch):
-    # Rozpakowanie batcha (każdy element to: src, values, mask, labels, lambda_)
+    # Rozpakowanie batcha
     srcs, values, _, labels_list, lambdas_list = zip(*batch)
-    
     batch_size = len(batch)
     max_len = max(len(x) for x in srcs)
 
-    # 1. Padding dla danych wejściowych (genów) - Twoja obecna logika
+    # 1. Padding dla danych wejściowych (bez zmian)
     src_pad = torch.zeros(batch_size, max_len, dtype=torch.long)
     val_pad = torch.zeros(batch_size, max_len, dtype=torch.float)
     mask_pad = torch.ones(batch_size, max_len, dtype=torch.bool)
@@ -112,14 +111,20 @@ def collate_fn(batch):
         val_pad[i, :L] = values[i]
         mask_pad[i, :L] = False 
 
-    # 2. Padding dla Etykiet i Wag (Klucz do elastyczności)
-    # Konwertujemy na tensory 1D, jeśli jeszcze nimi nie są
-    labels_tensors = [torch.as_tensor(l, dtype=torch.long).flatten() for l in labels_list]
-    lambdas_tensors = [torch.as_tensor(lam, dtype=torch.float32).flatten() for lam in lambdas_list]
+    # 2. Inteligentna obsługa Etykiet i Wag
+    # Sprawdzamy pierwszy element. Jeśli to string, zakładamy tryb "ID/Inference"
+    first_label = labels_list[0]
+    
+    if isinstance(first_label, str):
+        # TRYB PREDYKCJI: labels_list to lista ID (stringów)
+        labels_final = list(labels_list) 
+        lambdas_final = list(lambdas_list) # tu będzie Twoje 'lambda_'
+    else:
+        # TRYB TRENINGU: labels_list to listy/tensory z etykietami
+        labels_tensors = [torch.as_tensor(l, dtype=torch.long).flatten() for l in labels_list]
+        lambdas_tensors = [torch.as_tensor(lam, dtype=torch.float32).flatten() for lam in lambdas_list]
 
-    # Łączymy w tensory 2D: (Batch, Max_Mixed_Components)
-    # Jeśli jedna próbka ma 1 etykietę, a inna 2, pad_sequence doda zero tam, gdzie brakuje
-    labels_pad = pad_sequence(labels_tensors, batch_first=True, padding_value=0)
-    lambdas_pad = pad_sequence(lambdas_tensors, batch_first=True, padding_value=0.0)
+        labels_final = pad_sequence(labels_tensors, batch_first=True, padding_value=0)
+        lambdas_final = pad_sequence(lambdas_tensors, batch_first=True, padding_value=0.0)
 
-    return src_pad, val_pad, mask_pad, labels_pad, lambdas_pad
+    return src_pad, val_pad, mask_pad, labels_final, lambdas_final
