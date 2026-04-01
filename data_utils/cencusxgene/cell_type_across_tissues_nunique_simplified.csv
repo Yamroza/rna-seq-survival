@@ -1,0 +1,130 @@
+cell_type_coarse,tissue_general
+T cell,4
+endothelial cell,4
+regulatory T cell,4
+plasma cell,4
+pericyte,4
+dendritic cell,4
+neutrophil,4
+endocrine cell,4
+capillary endothelial cell,4
+B cell,4
+"CD4-positive, alpha-beta T cell",4
+"CD8-positive, alpha-beta T cell",4
+mast cell,4
+epithelial cell,4
+monocyte,4
+fibroblast,4
+myofibroblast cell,4
+natural killer cell,4
+endothelial cell of lymphatic vessel,4
+muscle cell,4
+macrophage,4
+mature NK T cell,4
+stromal cell,4
+erythroid cell,3
+innate lymphoid cell,3
+immune cell,3
+mononuclear phagocyte,3
+progenitor cell,3
+NK cell,3
+secretory cell,3
+basal cell,3
+megakaryocyte,3
+myeloid cell,3
+T follicular helper cell,2
+renal intercalated cell,2
+promyelocyte,2
+chondrocyte,2
+neural cell,2
+professional antigen presenting cell,2
+primordial germ cell,2
+myelocyte,2
+mural cell,2
+mesothelial cell,2
+enterocyte,2
+group 2 innate lymphoid cell,2
+granulocyte,2
+large pre-B-II cell,2
+group 3 innate lymphoid cell,2
+hepatocyte,2
+small pre-B-II cell,2
+interstitial cell of Cajal,2
+keratinocyte,2
+vascular lymphangioblast,1
+"CD4-positive, alpha-beta thymocyte",1
+"CD8-positive, alpha-beta thymocyte",1
+Kupffer cell,1
+Langerhans cell,1
+pulmonary ionocyte,1
+pulmonary neuroendocrine cell,1
+renal alpha-intercalated cell,1
+renal beta-intercalated cell,1
+T-helper 17 cell,1
+Tc1 cell,1
+abnormal cell,1
+adventitial cell,1
+kidney collecting duct alpha-intercalated cell,1
+kidney collecting duct intercalated cell,1
+kidney collecting duct principal cell,1
+kidney connecting tubule principal cell,1
+kidney interstitial cell,1
+kidney outer medulla collecting duct intercalated cell,1
+hepatic stellate cell,1
+immature innate lymphoid cell,1
+ionocyte,1
+kidney pelvis urothelial cell,1
+lactocyte,1
+luminal hormone-sensing cell of mammary gland,1
+fibrocyte,1
+glomerular mesangial cell,1
+group 1 innate lymphoid cell,1
+"group 3 innate lymphoid cell, human",1
+hematopoietic cell,1
+mesangial cell,1
+mesothelial cell of pleura,1
+mucus secreting cell,1
+mucus secreting cell of bronchus submucosal gland,1
+mucus secreting cell of tracheobronchial tree submucosal gland,1
+enteroendocrine cell,1
+eosinophil,1
+eurydendroid cell,1
+multiciliated columnar cell of tracheobronchial tree,1
+natural T-regulatory cell,1
+collagen secreting cell,1
+cycling pulmonary alveolar type 2 cell,1
+deuterosomal cell,1
+double negative thymocyte,1
+"double-positive, alpha-beta thymocyte",1
+neuroendocrine cell,1
+pancreatic A cell,1
+pancreatic ductal cell,1
+paneth cell,1
+papillary tips cell,1
+basophil,1
+bladder urothelial cell,1
+bone marrow cell,1
+brush cell of tracheobronchial tree,1
+ciliated cell,1
+perivascular cell,1
+podocyte,1
+pre-B-I cell,1
+primitive red blood cell,1
+pulmonary alveolar type 1 cell,1
+pulmonary alveolar type 2 cell,1
+airway submucosal gland duct basal cell,1
+renal principal cell,1
+respiratory basal cell,1
+respiratory tract hillock cell,1
+respiratory tract suprabasal cell,1
+reticulocyte,1
+serous secreting cell,1
+M cell of gut,1
+serous secreting cell of bronchus submucosal gland,1
+taste receptor cell,1
+thymocyte,1
+tracheobronchial serous cell,1
+urothelial cell,1
+vasa recta cell,1
+kidney arterial blood vessel cell,1
+kidney cell,1

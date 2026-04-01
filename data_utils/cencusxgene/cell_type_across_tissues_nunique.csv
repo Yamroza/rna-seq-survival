@@ -1,0 +1,361 @@
+cell_type,n_tissues
+mast cell,4
+pericyte,4
+mature NK T cell,4
+"CD4-positive, alpha-beta T cell",4
+monocyte,4
+regulatory T cell,4
+macrophage,4
+"CD8-positive, alpha-beta T cell",4
+plasma cell,4
+endocrine cell,4
+endothelial cell,4
+capillary endothelial cell,4
+natural killer cell,4
+endothelial cell of lymphatic vessel,4
+fibroblast,4
+neutrophil,4
+B cell,4
+T cell,4
+myofibroblast cell,4
+dendritic cell,4
+epithelial cell,4
+basal cell,3
+stromal cell,3
+plasmacytoid dendritic cell,3
+goblet cell,3
+unknown,3
+conventional dendritic cell,3
+alternatively activated macrophage,3
+vein endothelial cell,3
+myeloid cell,3
+erythroid progenitor cell,3
+cord blood hematopoietic stem cell,3
+vascular associated smooth muscle cell,3
+megakaryocyte,3
+erythrocyte,3
+leukocyte,3
+non-classical monocyte,3
+gamma-delta T cell,3
+IgG plasma cell,3
+smooth muscle cell,3
+IgA plasma cell,3
+innate lymphoid cell,3
+classical monocyte,3
+mononuclear phagocyte,3
+lymphocyte,3
+naive B cell,3
+malignant cell,3
+myeloid dendritic cell,3
+"effector memory CD8-positive, alpha-beta T cell",3
+"effector memory CD4-positive, alpha-beta T cell",3
+"plasmacytoid dendritic cell, human",3
+"naive thymus-derived CD4-positive, alpha-beta T cell",3
+interstitial cell of Cajal,2
+intermediate monocyte,2
+granulocyte monocyte progenitor cell,2
+common myeloid progenitor,2
+epithelial cell of proximal tubule,2
+group 3 innate lymphoid cell,2
+myelocyte,2
+enterocyte,2
+endothelial cell of vascular tree,2
+endothelial cell of artery,2
+endothelial cell of arteriole,2
+embryonic stem cell,2
+hematopoietic multipotent progenitor cell,2
+class switched memory B cell,2
+mural cell,2
+"effector CD4-positive, alpha-beta T cell",2
+hepatocyte,2
+early lymphoid progenitor,2
+immature B cell,2
+plasmablast,2
+"dendritic cell, human",2
+cytotoxic T cell,2
+neuron,2
+hematopoietic stem cell,2
+mature B cell,2
+kidney loop of Henle epithelial cell,2
+CD4-positive helper T cell,2
+progenitor cell,2
+"CD4-positive, CD25-positive, alpha-beta regulatory T cell",2
+renal intercalated cell,2
+"CD8-positive, alpha-beta memory T cell",2
+"naive thymus-derived CD8-positive, alpha-beta T cell",2
+naive T cell,2
+mesothelial cell,2
+promonocyte,2
+professional antigen presenting cell,2
+pro-B cell,2
+primordial germ cell,2
+fraction A pre-pro B cell,2
+large pre-B-II cell,2
+late pro-B cell,2
+T follicular helper cell,2
+glial cell,2
+promyelocyte,2
+mucosal invariant T cell,2
+chondrocyte,2
+small pre-B-II cell,2
+CD14-positive monocyte,2
+cell of skeletal muscle,2
+granulocyte,2
+keratinocyte,2
+stratified epithelial cell,2
+blood vessel endothelial cell,2
+erythroblast,2
+"CD14-positive, CD16-positive monocyte",2
+mesenchymal stem cell,2
+mesenchymal cell,2
+erythroid lineage cell,2
+unswitched memory B cell,2
+memory B cell,2
+megakaryocyte-erythroid progenitor cell,2
+"activated CD8-positive, alpha-beta T cell",2
+exhausted T cell,2
+acinar cell,2
+group 2 innate lymphoid cell,2
+myeloid leukocyte,1
+"myeloid dendritic cell, human",1
+lung interstitial macrophage,1
+lung megakaryocyte,1
+lung microvascular endothelial cell,1
+lung multiciliated epithelial cell,1
+lung pericyte,1
+"lung resident memory CD4-positive, alpha-beta T cell",1
+"lung resident memory CD8-positive, alpha-beta T cell",1
+lung secretory cell,1
+macula densa epithelial cell,1
+mammary gland epithelial cell,1
+mature alpha-beta T cell,1
+mature conventional dendritic cell,1
+myoepithelial cell,1
+megakaryocyte progenitor cell,1
+mesangial cell,1
+mesonephric nephron tubule epithelial cell,1
+mesothelial cell of pleura,1
+metallothionein-positive alveolar macrophage,1
+mononuclear leukocyte,1
+mucus secreting cell,1
+mucus secreting cell of bronchus submucosal gland,1
+mucus secreting cell of tracheobronchial tree submucosal gland,1
+multiciliated columnar cell of tracheobronchial tree,1
+multiciliated epithelial cell,1
+muscle cell,1
+myelinating Schwann cell,1
+mature gamma-delta T cell,1
+tracheobronchial serous cell,1
+tracheobronchial smooth muscle cell,1
+tuft cell,1
+type I NK T cell,1
+type II NK T cell,1
+urothelial cell,1
+vasa recta ascending limb cell,1
+vasa recta cell,1
+vasa recta descending limb cell,1
+vascular lymphangioblast,1
+vein endothelial cell of respiratory system,1
+Tc1 cell,1
+"CD16-negative, CD56-bright natural killer cell, human",1
+"CD16-positive, CD56-dim natural killer cell, human",1
+CD1c-positive myeloid dendritic cell,1
+lung macrophage,1
+T-helper 17 cell,1
+Schwann cell precursor,1
+Schwann cell,1
+"NKp46-positive innate lymphoid cell, human",1
+MHC-II-positive classical monocyte,1
+M cell of gut,1
+Langerhans cell,1
+"CD22-positive, CD38-low small pre-B cell",1
+"CD8-positive, alpha-beta thymocyte",1
+"CD8-positive, alpha-beta regulatory T cell",1
+"CD8-positive, alpha-beta memory T cell, CD45RO-positive",1
+"CD8-positive, alpha-beta cytotoxic T cell",1
+"CD8-alpha-alpha-positive, alpha-beta intraepithelial T cell",1
+"CD4-positive, alpha-beta thymocyte",1
+"CD4-positive, alpha-beta memory T cell",1
+"CD34-positive, CD56-positive, CD117-positive common innate lymphoid precursor, human",1
+Kupffer cell,1
+myoepithelial cell of bronchus submucosal gland,1
+nasal mucosa goblet cell,1
+natural T-regulatory cell,1
+nephron tubule epithelial cell,1
+neural cell,1
+neural progenitor cell,1
+neuroendocrine cell,1
+neuroendocrine cell of epithelium of lobar bronchus,1
+non-myelinating Schwann cell,1
+pancreatic A cell,1
+pancreatic acinar cell,1
+pancreatic ductal cell,1
+paneth cell,1
+papillary tips cell,1
+parietal epithelial cell,1
+tracheobronchial goblet cell,1
+thymocyte,1
+taste receptor cell,1
+stem cell,1
+squamous epithelial cell,1
+smooth muscle cell of the pulmonary artery,1
+skeletal muscle satellite cell,1
+serous secreting cell of bronchus submucosal gland,1
+peripheral nervous system neuron,1
+serous cell of epithelium of lobular bronchiole,1
+serous cell of epithelium of bronchus,1
+secretory cell,1
+pre-B-I cell,1
+podocyte,1
+platelet,1
+perivascular cell,1
+peritubular capillary endothelial cell,1
+serous secreting cell,1
+bronchus fibroblast of lung,1
+bronchiolar smooth muscle cell,1
+bronchial smooth muscle cell,1
+bronchial goblet cell,1
+bone marrow cell,1
+blood vessel smooth muscle cell,1
+bladder urothelial cell,1
+basophil,1
+kidney collecting duct alpha-intercalated cell,1
+alveolar type 1 fibroblast cell,1
+alveolar macrophage,1
+alveolar capillary type 2 endothelial cell,1
+alveolar capillary type 1 endothelial cell,1
+alveolar adventitial fibroblast,1
+alpha-beta T cell,1
+airway submucosal gland duct basal cell,1
+airway submucosal gland collecting duct epithelial cell,1
+basal-myoepithelial cell of mammary gland,1
+"effector CD8-positive, alpha-beta T cell",1
+early pro-B cell,1
+"double-positive, alpha-beta thymocyte",1
+double negative thymocyte,1
+deuterosomal cell,1
+cycling stromal cell,1
+cycling pulmonary alveolar type 2 cell,1
+cycling macrophage,1
+brush cell of tracheobronchial tree,1
+common dendritic progenitor,1
+columnar/cuboidal epithelial cell,1
+colon epithelial cell,1
+collagen secreting cell,1
+club cell,1
+ciliated epithelial cell,1
+ciliated cell,1
+"central memory CD8-positive, alpha-beta T cell",1
+"central memory CD4-positive, alpha-beta T cell",1
+cycling T cell,1
+pulmonary capillary endothelial cell,1
+pulmonary artery endothelial cell,1
+pulmonary alveolar type 2 cell,1
+pulmonary alveolar type 1 cell,1
+pulmonary alveolar epithelial cell,1
+progenitor cell of mammary luminal epithelium,1
+pro-T cell,1
+primitive red blood cell,1
+adventitial fibroblast,1
+pre-conventional dendritic cell,1
+"CD14-low, CD16-positive monocyte",1
+B-2 B cell,1
+B-1b B cell,1
+B-1a B cell,1
+B-1 B cell,1
+ventricular cardiac muscle cell,1
+"CD4-positive, CD25-positive, CCR4-positive, alpha-beta regulatory T cell",1
+precursor B cell,1
+adventitial cell,1
+activated type II NK T cell,1
+"activated CD4-positive, alpha-beta T cell, human",1
+"activated CD4-positive, alpha-beta T cell",1
+abnormal cell,1
+"CD14-positive, CD16-negative classical monocyte",1
+reticulocyte,1
+respiratory tract suprabasal cell,1
+pulmonary interstitial fibroblast,1
+respiratory tract goblet cell,1
+respiratory tract epithelial cell,1
+respiratory basal cell,1
+renal principal cell,1
+renal interstitial pericyte,1
+renal beta-intercalated cell,1
+renal alpha-intercalated cell,1
+pulmonary neuroendocrine cell,1
+pulmonary ionocyte,1
+respiratory tract hillock cell,1
+kidney inner medulla collecting duct epithelial cell,1
+kidney epithelial cell,1
+kidney distal convoluted tubule epithelial cell,1
+kidney cortex collecting duct epithelial cell,1
+kidney connecting tubule principal cell,1
+kidney connecting tubule epithelial cell,1
+kidney collecting duct principal cell,1
+kidney collecting duct intercalated cell,1
+"effector memory CD4-positive, alpha-beta T cell, terminally differentiated",1
+secondary crest myofibroblast,1
+kidney cell,1
+kidney capillary endothelial cell,1
+kidney arterial blood vessel cell,1
+ionocyte,1
+intestine goblet cell,1
+intestinal tuft cell,1
+intestinal epithelial cell,1
+kidney collecting duct cell,1
+lung goblet cell,1
+lung endothelial cell,1
+luminal hormone-sensing cell of mammary gland,1
+luminal epithelial cell of mammary gland,1
+luminal adaptive secretory precursor cell of mammary gland,1
+lactocyte,1
+kidney resident macrophage,1
+kidney proximal convoluted tubule epithelial cell,1
+kidney interstitial alternatively activated macrophage,1
+kidney outer medulla collecting duct intercalated cell,1
+kidney loop of Henle thin descending limb epithelial cell,1
+kidney loop of Henle thin ascending limb epithelial cell,1
+kidney loop of Henle thick ascending limb epithelial cell,1
+kidney loop of Henle descending limb epithelial cell,1
+kidney loop of Henle cortical thick ascending limb epithelial cell,1
+kidney loop of Henle ascending limb epithelial cell,1
+kidney interstitial fibroblast,1
+kidney interstitial cell,1
+kidney pelvis urothelial cell,1
+fetal pre-type II pulmonary alveolar epithelial cell,1
+eurydendroid cell,1
+epithelial cell of proximal tubule segment 3,1
+epithelial cell of proximal tubule segment 1,1
+epithelial cell of pancreas,1
+epithelial cell of nephron,1
+epithelial cell of lung,1
+epithelial cell of lower respiratory tract,1
+inflammatory macrophage,1
+epithelial cell of early distal convoluted tubule,1
+epithelial cell of distal tubule,1
+eosinophil,1
+enteroendocrine cell,1
+endothelial tip cell,1
+endothelial cell of respiratory system lymphatic vessel,1
+elicited macrophage,1
+"effector memory CD8-positive, alpha-beta T cell, terminally differentiated",1
+epithelial cell of glomerular capsule,1
+immature innate lymphoid cell,1
+immature alpha-beta T cell,1
+immature Schwann cell,1
+hepatic stellate cell,1
+hematopoietic cell,1
+helper T cell,1
+"group 3 innate lymphoid cell, human",1
+group 1 innate lymphoid cell,1
+fibroblast of breast,1
+glomerular mesangial cell,1
+glomerular endothelial cell,1
+glomerular capillary endothelial cell,1
+glandular secretory epithelial cell,1
+germinal center T cell,1
+germinal center B cell,1
+fibrocyte,1
+fibroblast of mammary gland,1
+fibroblast of lung,1
+granzyme K-associated CD8 T cell,1
