@@ -2,6 +2,7 @@ import sys
 import os
 import argparse
 import anndata as ad
+from datetime import datetime
 import torch
 import numpy as np
 import wandb
@@ -89,12 +90,13 @@ def main():
         scheduler.step()
 
         print(f"Epoch {epoch+1:02d}/{config.epochs} | "
-              f"Loss: {train_res['loss']:.4f} | Val Acc: {val_acc:.3f}")
+              f"Loss: {train_res['loss']:.4f} | Val Acc: {val_acc:.3f} | "
+              f"Datetime: {datetime.now()}")
 
         wandb.log({
             "adapter/epoch": epoch + 1,
             "adapter/train/loss": train_res["loss"],
-            "adapter/train/acc_main": train_res["acc_main"],
+            "adapter/train/acc_main": train_res["acc"],
             "adapter/val/loss": val_loss,
             "adapter/val/acc": val_acc,
             "adapter/lr": optimizer.param_groups[0]['lr']
@@ -102,15 +104,18 @@ def main():
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            checkpoint = {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'val_acc': val_acc,
-                'config': vars(args)
-            }
-            torch.save(checkpoint, config.save_path)
-            wandb.save(config.save_path)
-            print(f"New best model saved (Acc: {val_acc:.4f})")
+
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'val_acc': val_acc,
+            'config': vars(args)
+        }
+        base_path, ext = os.path.splitext(config.save_path) # rozdziela na 'checkpoints/scgpt_adapter_checkpoint' i '.pt'
+        current_save_path = f"{base_path}_{epoch+1}{ext}"
+        torch.save(checkpoint, current_save_path)
+        wandb.save(current_save_path)
+        print(f"New best model saved (Acc: {val_acc:.4f})")
 
     wandb.finish()
 
