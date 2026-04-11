@@ -108,11 +108,15 @@ def main():
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
             'val_acc': val_acc,
+            'num_classes': num_classes,
             'config': vars(args)
         }
         base_path, ext = os.path.splitext(config.save_path) # rozdziela na 'checkpoints/scgpt_adapter_checkpoint' i '.pt'
         current_save_path = f"{base_path}_{epoch+1}{ext}"
+        os.makedirs(os.path.dirname(current_save_path), exist_ok=True)
         torch.save(checkpoint, current_save_path)
         wandb.save(current_save_path)
         print(f"New best model saved (Acc: {val_acc:.4f})")
