@@ -19,42 +19,24 @@ echo "====================================================="
 echo "TRAINING ADAPTER"
 echo "====================================================="
 
-LR=${LR:-0.00005}
-BATCH_SIZE=${BATCH_SIZE:-128}
-EPOCHS=${EPOCHS:-25}
-DROPOUT=${DROPOUT:-0.5}
-DATA_PATH=${DATA_PATH:-"data_new/train.h5ad"}
+LR=${LR:-0.0001}
+HIDDEN=${HIDDEN:-"512 512"}
 SEQ_LENGTH=${SEQ_LENGTH:-2000}
-HIDDEN=${HIDDEN:-"512 256"}
-DATASET=${DATASET:-"bulkDataset"}
+DROPOUT=${DROPOUT:-0}
 
 # LR=0.00005
-# BATCH_SIZE=128
-# EPOCHS=25
-# DROPOUT=0.5
-# DATA_PATH="data_new/train.h5ad"
 # SEQ_LENGTH=2000
 # HIDDEN="512 256"
-# DATASET="bulkDataset"
+# DROPOUT=0.5
 
-DATA_FILENAME=$(basename "$DATA_PATH")
-DATA_FILENAME="${DATA_FILENAME%.*}"
+BATCH_SIZE=128
+EPOCHS=20
+# DATA_PATH="data_new/train.h5ad"
+DATA_PATH="data_new/blkb_common_train.h5ad"
+DATASET="donorDataset"
 
-SAVE_CONFIG="scgpt_dataset_${DATASET}_train_data_${DATA_FILENAME}_lr_${LR}_bs_${BATCH_SIZE}_ep_${EPOCHS}_drop_${DROPOUT}_seqlen_${SEQ_LENGTH}_hiddims_${HIDDEN// /_}"
-SAVE_NAME="epoch.pt"
-SAVE_PATH="checkpoints/the_great/${SAVE_CONFIG}/${SAVE_NAME}"
-
-python train_adapter.py \
-    --lr $LR \
-    --batch_size $BATCH_SIZE \
-    --epochs $EPOCHS \
-    --dropout $DROPOUT \
-    --save_path $SAVE_PATH \
-    --data_path $DATA_PATH \
-    --seq_length $SEQ_LENGTH \
-    --hidden_dims $HIDDEN \
-    --dataset $DATASET \
-    # --subset 100
+SAVE_CONFIG="first_scgpt_lr_${LR}_bs_${BATCH_SIZE}_ep_${EPOCHS}_drop_${DROPOUT}_seqlen_${SEQ_LENGTH}_hiddims_${HIDDEN// /_}"
+SAVE_PATH="checkpoints/the_great/best_scgpt_lr_0.0001_bs_128_ep_20_drop_0_seqlen_2000_hiddims_512_512_20.pt"
 
 echo "====================================================="
 echo "GENERATING EMBEDDINGS"
@@ -63,6 +45,7 @@ echo "====================================================="
 FILENAME="TCGA-BRCA.star_tpm"
 DATA_PATH="../data/0_data_for_mlp/${FILENAME}.csv"
 EMB_SAVE_DIR="embeddings/the_great/${SAVE_CONFIG}"
+# EMB_SAVE_DIR="embeddings/test"
 EMB_SAVE_PATH="${EMB_SAVE_DIR}/${FILENAME}.json"
 
 CHECK_PATH="${SAVE_PATH}_${EPOCHS}"
@@ -85,7 +68,7 @@ TASK="dss_survival_brca"
 MODEL="mlp"
 EXP_CODE="adapter_premium_donor"
 OMICS_TYPE="${FILENAME}.json"
-EXPR_PATH="embeddings"
+EXPR_PATH="embeddings/the_great"
 MAX_EPOCHS=50
 
 # TRAIN
