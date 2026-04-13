@@ -27,6 +27,7 @@ DATA_PATH=${DATA_PATH:-"data_new/train.h5ad"}
 SEQ_LENGTH=${SEQ_LENGTH:-2000}
 HIDDEN=${HIDDEN:-"512 256"}
 DATASET=${DATASET:-"bulkDataset"}
+EXP_CODE=${EXP_CODE:-"adapter_premium_donor"}
 
 # LR=0.00005
 # BATCH_SIZE=128
@@ -65,11 +66,11 @@ DATA_PATH="../data/0_data_for_mlp/${FILENAME}.csv"
 EMB_SAVE_DIR="embeddings/the_great/${SAVE_CONFIG}"
 EMB_SAVE_PATH="${EMB_SAVE_DIR}/${FILENAME}.json"
 
-CHECK_PATH="${SAVE_PATH}_${EPOCHS}"
+CHECK_PATH="${SAVE_PATH%.pt}_${EPOCHS}.pt"
 
 python get_adapter_embeddings.py \
     --data_path $DATA_PATH \
-    --check_path $SAVE_PATH \
+    --check_path $CHECK_PATH \
     --save_path $EMB_SAVE_PATH \
 
 echo "====================================================="
@@ -83,10 +84,10 @@ DATA_TYPE='json'
 DATA_SOURCE="/scratch/2370352/my-research/data/clinical_data/brca_clinical"
 TASK="dss_survival_brca"
 MODEL="mlp"
-EXP_CODE="adapter_premium_donor"
 OMICS_TYPE="${FILENAME}.json"
 EXPR_PATH="embeddings"
 MAX_EPOCHS=50
+EXP_CODE="${EXP_CODE}/${SAVE_CONFIG}"
 
 # TRAIN
 python ../ts_survival_prediction/src/main.py \
