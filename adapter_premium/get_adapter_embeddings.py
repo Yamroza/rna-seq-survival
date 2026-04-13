@@ -71,6 +71,7 @@ def main():
     }
 
     # ----- SAVE ------
+    os.makedirs(os.path.dirname(config.save_path), exist_ok=True)
     with open(config.save_path, 'w', encoding='utf-8') as f:
         for cell_id, emb in results_dict.items():
             record = {"id": cell_id, "embedding": emb}
