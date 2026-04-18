@@ -16,8 +16,8 @@ def main():
     
     # paths and filenames
     parser.add_argument("--filename",   type=str, default="TCGA-OV.star_tpm", help="h5ad file name without extension")
-    parser.add_argument("--data_dir",   type=str, default="../../data/0_adata_for_scgpt", help="directory with input adata")
-    parser.add_argument("--output_dir", type=str, default="../../data/0_data_for_mlp")
+    parser.add_argument("--data_dir",   type=str, default="../data/0_adata_for_scgpt", help="directory with input adata")
+    parser.add_argument("--output_dir", type=str, default="../data/0_data_for_mlp")
     parser.add_argument("--model_dir",  type=str, default="/scratch/2370352/my-research/papers/scgpt/save")
     
     # model and preprocessing config

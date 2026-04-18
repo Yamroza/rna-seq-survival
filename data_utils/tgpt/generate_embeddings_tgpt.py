@@ -26,9 +26,9 @@ def main():
     parser = argparse.ArgumentParser(description="extract tgpt embeddings from gene sequences")
     
     parser.add_argument("--filename",           type=str, default="TCGA-OV.star_tpm", help="name of the input tsv file (without extension)")
-    parser.add_argument("--data_for_mlp_dir",   type=str, default="../../data/0_data_for_mlp")
-    parser.add_argument("--data_for_tgpt_dir",  type=str, default="../../data/0_adata_for_tgpt")
-    parser.add_argument("--output_dir",         type=str, default="../../data/0_data_for_mlp")
+    parser.add_argument("--data_for_mlp_dir",   type=str, default="../data/0_data_for_mlp")
+    parser.add_argument("--data_for_tgpt_dir",  type=str, default="../data/0_adata_for_tgpt")
+    parser.add_argument("--output_dir",         type=str, default="../data/0_data_for_mlp")
     parser.add_argument("--max_len",            type=int, default=64, help='number of top genes used for analysis')
     parser.add_argument("--batch_size",         type=int, default=64)
 
