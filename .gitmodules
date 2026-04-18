@@ -7,3 +7,9 @@
 [submodule "papers/scgpt"]
 	path = papers/scgpt
 	url = https://github.com/bowang-lab/scGPT.git
+[submodule "papers/tGPT"]
+	path = papers/tGPT
+	url = https://github.com/deeplearningplus/tGPT
+[submodule "papers/scFoundation"]
+	path = papers/scFoundation
+	url = https://github.com/biomap-research/scFoundation
