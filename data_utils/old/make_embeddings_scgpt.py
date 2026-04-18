@@ -3,9 +3,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import scanpy as sc
-import sys
-
-sys.path.insert(0, "../")
 
 import scgpt as scg
 import pandas as pd
@@ -13,7 +10,7 @@ import pandas as pd
 
 warnings.simplefilter("ignore", ResourceWarning)
 
-filenames = ["adata_TCGA-BRCA.star_tpm"] # source data file, in "data" folder "adata_TCGA-LUAD.star_tpm", 
+filenames = ["adata_TCGA-KIRC.star_tpm"] # source data file, in "data" folder "adata_TCGA-LUAD.star_tpm", 
 models = ["whole_human"] #, "pancancer"]
 highly_variables = [(False, 0)]#, (True, 3000), (True, 6000)]
 # highly_variables = [(True, 3000), (True, 6000)]
@@ -57,4 +54,4 @@ for filename in filenames:
                 df_emb = df_emb.reset_index().rename(columns={"index": "Unnamed: 0"})
 
                 # Path(f"../data/scgpt_embeddings/{max_length}").mkdir(parents=True, exist_ok=True)
-                df_emb.to_csv(f"../data/scgpt_embeddings/new_lengths/scgpt_{filename}_{model}_hvg_{hvg_no}_ml_1200_{i}.csv", index=False)
+                df_emb.to_csv(f"../data/scgpt_embeddings/new_lengths/AAAAA_scgpt_{filename}_{model}_hvg_{hvg_no}_ml_1200_{i}.csv", index=False)
