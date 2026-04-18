@@ -2,7 +2,7 @@ from collections import defaultdict
 import random
 import torch
 import numpy as np
-
+import scipy.sparse as sp
 
 class BaseMixer:
     """Klasa bazowa dla wszystkich metod mieszania."""
@@ -125,3 +125,82 @@ class DynamicDonorMixer(BaseMixer):
         lambdas = torch.from_numpy(lambdas_np)
         
         return mixed_row, labels, lambdas
+
+
+class DynamicDonorMixerNN(BaseMixer):
+    """
+    Miesza n_cells komórek w obrębie tego samego dawcy (donor_id) i tkanki.
+    Stosuje sumowanie, normalizację do zadanego target_sum, a następnie log1p.
+    """
+    
+    def __init__(self, adata, donor_col="donor_id", tissue_col="tissue_general", n_cells=8, target_sum=1e6):
+        super().__init__()
+        self.donor_col = donor_col
+        self.tissue_col = tissue_col
+        self.n_cells = n_cells
+        self.target_sum = target_sum  # Dodany parametr target_sum
+        
+        # Pobieramy listę dawców i tkanek
+        self.cell_to_donor = adata.obs[donor_col].values
+        self.cell_to_tissue = adata.obs[tissue_col].values
+        
+        # Budujemy mapowanie: (donor, tissue) -> lista indeksów komórek
+        self.group_to_indices = defaultdict(list)
+        for idx, (donor, tissue) in enumerate(zip(self.cell_to_donor, self.cell_to_tissue)):
+            self.group_to_indices[(donor, tissue)].append(idx)
+            
+        # Konwertujemy na tablice numpy dla błyskawicznego losowania
+        for group in self.group_to_indices:
+            self.group_to_indices[group] = np.array(self.group_to_indices[group])
+
+    def _extract_dense_row(self, row):
+        """Pomocnicza funkcja do bezpiecznego wyciągania gęstego wektora."""
+        if sp.issparse(row):
+            return row.toarray().flatten()
+        elif isinstance(row, np.matrix):
+            return np.asarray(row).flatten()
+        return row
+
+    def __call__(self, idx, dataset):
+        # ---------------------------------------------------------
+        # KROK 1: Wybór indeksów (1 komórka główna + reszta)
+        # ---------------------------------------------------------
+        if self.n_cells <= 1:
+            all_indices = [idx]
+        else:
+            current_group = (self.cell_to_donor[idx], self.cell_to_tissue[idx])
+            available_indices = self.group_to_indices[current_group]
+            additional_indices = np.random.choice(available_indices, size=self.n_cells - 1, replace=True)
+            all_indices = [idx] + additional_indices.tolist()
+            
+        # ---------------------------------------------------------
+        # KROK 2: Agregacja (Sumowanie surowych odczytów)
+        # ---------------------------------------------------------
+        rows = [self._extract_dense_row(dataset.X[i]) for i in all_indices]
+        mixed_row = np.sum(rows, axis=0).astype(np.float32)
+
+        # ---------------------------------------------------------
+        # KROK 3: Normalizacja do wspólnej sumy (Target Sum)
+        # ---------------------------------------------------------
+        if self.target_sum is not None:
+            current_sum = mixed_row.sum()
+            if current_sum > 0:
+                mixed_row = (mixed_row / current_sum) * self.target_sum
+
+        # ---------------------------------------------------------
+        # KROK 4: Logarytmowanie (log1p)
+        # ---------------------------------------------------------
+        mixed_row = np.log1p(mixed_row)
+        mixed_row_sparse = sp.csr_matrix(mixed_row.reshape(1, -1))
+
+        # ---------------------------------------------------------
+        # KROK 5: Przygotowanie wyjścia dla scGPT
+        # ---------------------------------------------------------
+        labels = torch.tensor([dataset.labels[i] for i in all_indices], dtype=torch.long)
+        
+        # API wymaga wag dla każdej komórki. Ponieważ po prostu sumowaliśmy, 
+        # logicznie każda komórka ma równy udział (1 / n_cells).
+        lambdas_np = np.ones(self.n_cells, dtype=np.float32) / self.n_cells
+        lambdas = torch.from_numpy(lambdas_np)
+        
+        return mixed_row_sparse[0], labels, lambdas
