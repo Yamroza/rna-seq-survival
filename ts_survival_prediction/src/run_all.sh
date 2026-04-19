@@ -6,28 +6,43 @@ conda activate myenv
 echo "Using python from:"
 which python
 
-# EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp_hvg_new"
-EXPR_PATH="/scratch/2370352/my-research/adapter_premium/embeddings"
-DATA_TYPE='json'
-# 0_data_for_mlp"
-#scgpt_embeddings"
+EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp"
+# EXPR_PATH="/scratch/2370352/my-research/adapter_premium/embeddings"
+DATA_TYPE='csv'
 
-# luad_clinical, brca_clinical
-DATA_SOURCE="/scratch/2370352/my-research/data/clinical_data/brca_clinical"
-TASK="dss_survival_brca"
+# Zmienne bazowe dla ścieżek
+CLINICAL_BASE_DIR="/scratch/2370352/my-research/data/clinical_data"
 
 # mlp snn pathway_mlp pathway_snn gene_dimaf
 MODEL="mlp"
-EXP_CODE="adapter_premium"
-
-# NETWORK_SIZE="big"
-# AGGREGATION_TYPE="concat"
+EXP_CODE="small_cohorts"
 
 for file in "$EXPR_PATH"/*; do
     omics_type=$(basename "$file")
 
     echo "=============================="
-    echo "Running for omics_type: $omics_type"
+    echo "Processing file: $omics_type"
+    
+    # 1. Wyciąganie nazwy kohorty za pomocą Regex (szukamy 'TCGA-COŚ')
+    if [[ "$omics_type" =~ TCGA-([A-Z]+) ]]; then
+        # BASH_REMATCH[1] przechowuje to, co było w nawiasach (czyli np. BLCA, OV)
+        cohort_upper="${BASH_REMATCH[1]}"
+        
+        # 2. Zamiana na małe litery (np. BLCA -> blca)
+        cohort_lower=$(echo "$cohort_upper" | tr '[:upper:]' '[:lower:]')
+    else
+        echo "WARNING: Could not extract cohort name (TCGA-...) from $omics_type. Skipping..."
+        echo "=============================="
+        continue
+    fi
+
+    # 3. Dynamiczne budowanie ścieżki i nazwy zadania
+    DATA_SOURCE="${CLINICAL_BASE_DIR}/${cohort_lower}_clinical"
+    TASK="dss_survival_${cohort_lower}"
+
+    echo "Detected cohort : $cohort_upper"
+    echo "Data source     : $DATA_SOURCE"
+    echo "Task            : $TASK"
     echo "=============================="
 
     # TRAIN
@@ -41,7 +56,6 @@ for file in "$EXPR_PATH"/*; do
         --data_type $DATA_TYPE \
         --folds 5 \
         --expression_data_path "$EXPR_PATH"
-
 
     # TEST
     python main.py \
