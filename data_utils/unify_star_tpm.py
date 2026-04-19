@@ -35,6 +35,9 @@ def main():
         gene_info_file=args.gene_info_file,
         save=save_files
     )
+    # uncomment this line when skipping creation of first csv file
+    # df_filtered = pd.read_csv(f'{args.data_for_mlp_dir}/{args.filename}.csv', index_col="Unnamed: 0")
+    
     print(f"mlp data shape: {df_filtered.shape}")
 
     # step 2: prepare h5ad for scgpt
