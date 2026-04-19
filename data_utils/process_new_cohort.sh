@@ -13,9 +13,8 @@ echo "Starting pipeline for filename: ${FILENAME}"
 echo "Using python from: $(which python)"
 
 #=========CONFIG============
-FILENAME="TCGA-BLCA.star_tpm"
-GUNZIP_FILENAME="../data/raw_tsv_data/${FILENAME}.tsv.gz"
-COHORT="blca"
+FILENAME="TCGA-GBMLGG.star_tpm"
+COHORT="gbmlgg"
 
 # clinical
 N_FOLDS=5
@@ -34,6 +33,7 @@ BATCH_SIZE=32
 
 print_step "UNZIPPING DATA"
 echo "Unzipping ${GUNZIP_FILENAME}..."
+GUNZIP_FILENAME="../data/raw_tsv_data/${FILENAME}.tsv.gz"
 gunzip -k $GUNZIP_FILENAME  # Dodałem -k (keep), żeby nie usuwało oryginału, jeśli wolisz
 
 print_step "PREPROCESSING (unify_star_tpm)"
