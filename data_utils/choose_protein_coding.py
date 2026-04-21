@@ -1,11 +1,11 @@
 import pandas as pd
 import json
 
-def list_of_protein_coding_genes(gene_list: list):
+def list_of_protein_coding_genes(gene_list: list, gene_info_table_file = '../data/gene_info_table.csv', gene_info_file = '../data/gene_info.csv'):
     genes = pd.Index(gene_list)
 
     # load gene info data, drop duplacates
-    gene_info_original = pd.read_csv('../data/gene_info_table.csv')
+    gene_info_original = pd.read_csv(gene_info_table_file)
     gene_info = gene_info_original.drop(columns=['ensembl_id', 'Unnamed: 0'])
     gene_info = gene_info.drop_duplicates()
 
@@ -23,7 +23,7 @@ def list_of_protein_coding_genes(gene_list: list):
     missing_genes = genes[mapped_types.isna()]
 
     # another gene_info for missed genes
-    gene_ensembl = pd.read_csv('../data/gene_info.csv')
+    gene_ensembl = pd.read_csv(gene_info_file)
     symbol_to_ens_map = gene_ensembl.set_index("feature_name")["feature_id"]
     missing_ens = missing_genes.map(symbol_to_ens_map)
     gene_info_ens = gene_info_original.drop(columns=['gene_name', 'Unnamed: 0'])
