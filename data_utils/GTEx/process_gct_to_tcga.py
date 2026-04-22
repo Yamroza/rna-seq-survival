@@ -1,5 +1,6 @@
 import argparse
 import os
+import numpy as np
 import pandas as pd
 
 import sys
@@ -89,8 +90,10 @@ def main():
     protein_coding = list_of_protein_coding_genes(gene_list, args.gene_info_table, args.gene_info_file)
 
     df_filtered = df[df.columns.intersection(protein_coding)]
-
     df_filtered = df_filtered[~df_filtered.index.duplicated(keep="first")]
+
+    # normalization
+    df_filtered[protein_coding] = np.log2(df_filtered[protein_coding].astype(float) + 1)
 
     os.makedirs(args.save_dir, exist_ok=True)
     # Zapisujemy gotowy plik, np. z dopiskiem '_processed'
