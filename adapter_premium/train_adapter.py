@@ -36,7 +36,9 @@ def main():
     
     # Debugowanie / Szybkie testy
     parser.add_argument("--subset",     type=int,   default=None, help="Loader size for debbuging")
-    
+    # Resume from checkpoint
+    parser.add_argument("--resume_from", type=str, default=None, help="Path to checkpoint file to resume training")
+
     args = parser.parse_args()
 
     # ── WANDB SETUP ───────────────────────────────────────────────────────────
@@ -82,9 +84,30 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.epochs)
 
     # ── TRAINING LOOP ─────────────────────────────────────────────────────────
+    start_epoch = 0
     best_val_acc = 0.0
-    print(config.epochs)
-    for epoch in range(config.epochs):
+
+    if config.resume_from is not None:
+        if os.path.isfile(config.resume_from):
+            print(f"Loading checkpoint '{config.resume_from}'...")
+            checkpoint = torch.load(config.resume_from, map_location=device)
+            
+            # Odtwarzanie stanów
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            
+            # Ustalenie od której epoki zacząć
+            start_epoch = checkpoint['epoch'] + 1
+            best_val_acc = checkpoint.get('val_acc', 0.0)
+            
+            print(f"Successfully loaded checkpoint. Resuming from epoch {start_epoch+1} "
+                  f"(Previous Best Acc: {best_val_acc:.4f})")
+        else:
+            print(f"Warning: No checkpoint found at '{config.resume_from}'. Starting from scratch.")
+
+    print(f"Total epochs planned: {config.epochs}")
+    for epoch in range(start_epoch, config.epochs):
         train_res = train_epoch(model, train_loader, optimizer, device)
         val_loss, val_acc = eval_epoch(model, val_loader, device)
         scheduler.step()
@@ -104,6 +127,9 @@ def main():
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
+            best = "best"
+        else:
+            best = ""
 
         checkpoint = {
             'epoch': epoch,
@@ -119,7 +145,8 @@ def main():
         os.makedirs(os.path.dirname(current_save_path), exist_ok=True)
         torch.save(checkpoint, current_save_path)
         wandb.save(current_save_path)
-        print(f"New best model saved (Acc: {val_acc:.4f})")
+        
+        print(f"New {best} model saved (Acc: {val_acc:.4f})")
 
     wandb.finish()
 
