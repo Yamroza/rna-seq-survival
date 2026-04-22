@@ -7,3 +7,4 @@ __pycache__
 logs
 wandb
 results
+sample_analysis_plots
