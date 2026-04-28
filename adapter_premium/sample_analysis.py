@@ -1,13 +1,13 @@
 """
-PCA and UMAP visualization comparing two bulk RNA-seq datasets (e.g. TCGA vs GTEx).
+PCA and UMAP visualization comparing multiple bulk RNA-seq datasets.
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from matplotlib.lines import Line2D
 from sklearn.decomposition import PCA
+from typing import Optional
 
 try:
     import umap
@@ -38,37 +38,53 @@ STYLE = {
     'ps.fonttype':    42,
 }
 
+DEFAULT_COLORS = [
+    '#e63946', '#2563eb', '#16a34a', '#f59e0b', '#7c3aed',
+    '#0891b2', '#db2777', '#65a30d', '#ea580c', '#111111',
+    '#06b6d4', '#84cc16', '#f97316', '#8b5cf6', '#ec4899',
+    '#14b8a6', '#eab308', '#6366f1', '#10b981', '#ef4444',
+    '#0284c7', '#a16207', '#be185d', '#15803d', '#7e22ce',
+    '#b45309', '#0f766e', '#1d4ed8', '#9f1239', '#3f6212',
+]
+
 
 # ---------------------------------------------------------------------------
 # Core functions
 # ---------------------------------------------------------------------------
 
-def match_genes(data: pd.DataFrame, gtex_data: pd.DataFrame,
-                index_col: str = 'Unnamed: 0') -> tuple[np.ndarray, np.ndarray, list]:
-    """
-    Find shared genes between two bulk DataFrames and return aligned matrices.
-    Expects one non-gene index column (default 'Unnamed: 0').
-    Returns (X_data, X_gtex, shared_genes).
-    """
-    data_genes = [c for c in data.columns if c != index_col]
-    gtex_genes = [c for c in gtex_data.columns if c != index_col]
-    shared     = sorted(set(data_genes) & set(gtex_genes))
-    print(f"Shared genes: {len(shared):,}")
+def load_dataset(path: str, log2_transform: bool = False,
+                 index_col: str = 'Unnamed: 0') -> pd.DataFrame:
+    """Load CSV and optionally apply log2(x+1) to gene columns."""
+    df = pd.read_csv(path)
+    if log2_transform:
+        gene_cols = [c for c in df.columns if c != index_col]
+        df[gene_cols] = np.log2(df[gene_cols].astype(float) + 1)
+    return df
 
-    X_data = data[shared].values.astype(np.float32)
-    X_gtex = gtex_data[shared].values.astype(np.float32)
-    return X_data, X_gtex, shared
+
+def match_genes_multi(datasets: list[pd.DataFrame],
+                      index_col: str = 'Unnamed: 0') -> tuple[list[np.ndarray], list]:
+    """
+    Intersect genes across all datasets.
+    Returns (list_of_X_matrices, shared_gene_names).
+    """
+    gene_sets = [set(c for c in df.columns if c != index_col) for df in datasets]
+    shared    = sorted(set.intersection(*gene_sets))
+    print(f"Shared genes across {len(datasets)} datasets: {len(shared):,}")
+    matrices  = [df[shared].values.astype(np.float32) for df in datasets]
+    return matrices, shared
 
 
 def run_pca(X: np.ndarray, n_components: int = 50) -> tuple[np.ndarray, np.ndarray]:
-    """Fit PCA on X, return (coords, explained_variance_ratio)."""
+    """Fit PCA, return (coords, explained_variance_ratio)."""
     pca    = PCA(n_components=n_components, random_state=SEED)
     coords = pca.fit_transform(X)
     return coords, pca.explained_variance_ratio_
 
 
-def run_umap(X: np.ndarray, n_neighbors: int = 30, min_dist: float = 0.3) -> np.ndarray | None:
-    """Fit UMAP on X, return 2D coords (or None if umap-learn unavailable)."""
+def run_umap(X: np.ndarray, n_neighbors: int = 30,
+             min_dist: float = 0.3) -> Optional[np.ndarray]:
+    """Fit UMAP, return 2D coords (or None if umap-learn unavailable)."""
     if not HAS_UMAP:
         return None
     print("Running UMAP...")
@@ -81,77 +97,71 @@ def run_umap(X: np.ndarray, n_neighbors: int = 30, min_dist: float = 0.3) -> np.
 # Plotting
 # ---------------------------------------------------------------------------
 
-def _scatter(ax, x, y, colors, labels, label_set):
-    """Draw scatter per group with matching color."""
-    color_map = dict(zip(label_set, colors))
-    for lbl in label_set:
-        idx = [i for i, l in enumerate(labels) if l == lbl]
+def _scatter(ax, x, y, colors, all_labels, groups):
+    color_map = dict(zip(groups, colors))
+    for lbl in groups:
+        idx = [i for i, l in enumerate(all_labels) if l == lbl]
         ax.scatter(x[idx], y[idx], c=color_map[lbl], s=8, alpha=0.6,
-                   linewidths=0, rasterized=True, label=lbl)
+                   linewidths=0, rasterized=True)
     ax.spines[['top', 'right']].set_visible(False)
 
 
-def plot_pca_umap(data: pd.DataFrame,
-                  gtex_data: pd.DataFrame,
-                  label_data: str = 'TCGA',
-                  label_gtex: str = 'GTEx',
+def plot_pca_umap(datasets: list[pd.DataFrame],
+                  labels: list[str],
+                  colors: Optional[list[str]] = None,
                   n_pca_components: int = 50,
                   index_col: str = 'Unnamed: 0',
                   save_prefix: str = 'comparison',
-                  color_data: str = '#111111',
-                  color_gtex: str = '#2563eb'):
+                  umap_n_neighbors: int = 30,
+                  umap_min_dist: float = 0.3):
     """
-    Main entry point. Matches genes, runs PCA + UMAP, and produces a
-    multi-panel figure saved as PDF and PNG.
+    Compare any number of bulk RNA-seq datasets with PCA + UMAP.
 
     Parameters
     ----------
-    data          : TCGA-style DataFrame (log2 TPM+1)
-    gtex_data     : GTEx-style DataFrame (log2 TPM+1, already normalised)
-    label_data    : Legend label for `data`
-    label_gtex    : Legend label for `gtex_data`
-    n_pca_components : Number of PCA components to compute
-    index_col     : Non-gene column to exclude from matrices
-    save_prefix   : Output filename prefix (no extension)
-    color_data    : Scatter color for `data` points
-    color_gtex    : Scatter color for `gtex_data` points
+    datasets         : List of DataFrames (all in log2 TPM+1 space)
+    labels           : Legend label per dataset
+    colors           : Hex colors per dataset; defaults to built-in palette
+    n_pca_components : PCA components to compute
+    index_col        : Sample-ID column to exclude from gene matrix
+    save_prefix      : Output filename prefix
+    umap_n_neighbors : UMAP n_neighbors
+    umap_min_dist    : UMAP min_dist
     """
+    assert len(datasets) == len(labels), "datasets and labels must have equal length"
     plt.rcParams.update(STYLE)
 
-    # --- align genes & build joint matrix ---
-    X_data, X_gtex, shared = match_genes(data, gtex_data, index_col)
-    n_data, n_gtex = len(X_data), len(X_gtex)
+    if colors is None:
+        colors = DEFAULT_COLORS[:len(datasets)]
 
-    X_all  = np.vstack([X_data, X_gtex])
-    labels = [label_data] * n_data + [label_gtex] * n_gtex
-    colors = [color_data, color_gtex]
-    groups = [label_data, label_gtex]
+    # align genes & stack
+    matrices, _ = match_genes_multi(datasets, index_col)
+    X_all       = np.vstack(matrices)
+    all_labels  = [lbl for lbl, X in zip(labels, matrices) for _ in range(len(X))]
 
-    # --- PCA ---
+    # PCA & UMAP
     print("Running PCA...")
     coords, var_exp = run_pca(X_all, n_components=n_pca_components)
+    umap_coords     = run_umap(X_all, n_neighbors=umap_n_neighbors, min_dist=umap_min_dist)
 
-    # --- UMAP ---
-    umap_coords = run_umap(X_all)
-
-    # --- figure layout ---
+    # layout
     n_panels = 4 if umap_coords is not None else 3
     fig, axes = plt.subplots(1, n_panels, figsize=(3.5 * n_panels, 3.4),
                              gridspec_kw={'wspace': 0.38})
 
-    # Panel A: PC1 vs PC2
-    _scatter(axes[0], coords[:, 0], coords[:, 1], colors, labels, groups)
+    # A: PC1 vs PC2
+    _scatter(axes[0], coords[:, 0], coords[:, 1], colors, all_labels, labels)
     axes[0].set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)')
     axes[0].set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)')
     axes[0].set_title('(A)\u2002PCA — PC1 vs PC2', pad=5, loc='left')
 
-    # Panel B: PC1 vs PC3
-    _scatter(axes[1], coords[:, 0], coords[:, 2], colors, labels, groups)
+    # B: PC1 vs PC3
+    _scatter(axes[1], coords[:, 0], coords[:, 2], colors, all_labels, labels)
     axes[1].set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)')
     axes[1].set_ylabel(f'PC3 ({var_exp[2]*100:.1f}%)')
     axes[1].set_title('(B)\u2002PCA — PC1 vs PC3', pad=5, loc='left')
 
-    # Panel C: cumulative explained variance
+    # C: scree
     ax = axes[2]
     cumvar = np.cumsum(var_exp) * 100
     ax.plot(range(1, len(cumvar) + 1), cumvar, color='#333333', lw=1.5)
@@ -168,36 +178,40 @@ def plot_pca_umap(data: pd.DataFrame,
     ax.grid(True, axis='y', lw=0.4, ls=':', color='0.8')
     ax.spines[['top', 'right']].set_visible(False)
 
-    # Panel D: UMAP
+    # D: UMAP
     if umap_coords is not None:
-        _scatter(axes[3], umap_coords[:, 0], umap_coords[:, 1], colors, labels, groups)
+        _scatter(axes[3], umap_coords[:, 0], umap_coords[:, 1], colors, all_labels, labels)
         axes[3].set_xlabel('UMAP 1')
         axes[3].set_ylabel('UMAP 2')
         axes[3].set_title('(D)\u2002UMAP', pad=5, loc='left')
 
-    # --- legend ---
+    # legend
     legend_handles = [
         Line2D([0], [0], marker='o', color='w', markerfacecolor=c,
                markersize=6, label=lbl)
-        for c, lbl in zip(colors, groups)
+        for c, lbl in zip(colors, labels)
     ]
-    fig.legend(handles=legend_handles, loc='lower center', ncol=2,
+    fig.legend(handles=legend_handles, loc='lower center', ncol=min(len(labels), 5),
                bbox_to_anchor=(0.5, -0.1), frameon=True,
                handletextpad=0.4, columnspacing=1.5, borderpad=0.6, fontsize=9)
 
-    # --- save ---
+    # save
     for ext in ('pdf', 'png'):
         path = f'sample_analysis_plots/{save_prefix}_pca_umap.{ext}'
         plt.savefig(path, bbox_inches='tight')
         print(f"Saved: {path}")
     plt.show()
 
-    # --- centroid distances (PC1-10) ---
-    print(f"\nCentroid L2 distance between {label_data} and {label_gtex} (PC1-10):")
-    idx_d = [i for i, l in enumerate(labels) if l == label_data]
-    idx_g = [i for i, l in enumerate(labels) if l == label_gtex]
-    dist  = np.linalg.norm(coords[idx_d, :10].mean(0) - coords[idx_g, :10].mean(0))
-    print(f"  {dist:.3f}")
+    # pairwise centroid distances (PC1-10)
+    print("\nPairwise centroid L2 distances (PC1-10):")
+    centroids = {
+        lbl: coords[[i for i, l in enumerate(all_labels) if l == lbl], :10].mean(0)
+        for lbl in labels
+    }
+    for i, a in enumerate(labels):
+        for b in labels[i+1:]:
+            dist = np.linalg.norm(centroids[a] - centroids[b])
+            print(f"  {a} vs {b}: {dist:.3f}")
 
 
 # ---------------------------------------------------------------------------
@@ -205,20 +219,40 @@ def plot_pca_umap(data: pd.DataFrame,
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    cohort = 'TCGA-KIRC'
-    tissue = 'kidney_cortex'
-    data      = pd.read_csv(f'../data/0_data_for_mlp_small_cohorts/{cohort}.star_tpm.csv')
-    gtex_data = pd.read_csv(f'../data/GTEx/processed/gene_tpm_v11_{tissue}_processed.csv')
-    
-    common_genes = sorted(set(data.columns) & set(gtex_data.columns) - {'Unnamed: 0'})
-    tcga_data = data[['Unnamed: 0'] + common_genes]
-    gtex_data = gtex_data[['Unnamed: 0'] + common_genes]
-    gtex_data[common_genes] = np.log2(gtex_data[common_genes].astype(float) + 1)
+    data_dir = '../data/0_data_for_mlp_small_cohorts'
+    cohorts  = ['TCGA-BLCA', 'TCGA-KIRC', 'TCGA-LUAD', 'TCGA-OV', 'TCGA-UCEC']
+
+    gtex_dir = '../data/GTEx/processed' #/gene_tpm_v11_{tissue}_processed.csv'
+    tissues = ['bladder', 'kidney_cortex', 'ovary']
+    datasets = [
+        load_dataset(f'{data_dir}/{c}.star_tpm.csv', log2_transform=False)
+        for c in cohorts
+    ]
+    gtex_datasets = [
+        load_dataset(f'{gtex_dir}/gene_tpm_v11_{t}_processed.csv', log2_transform=True)
+        for t in tissues
+    ]
+    datasets.extend(gtex_datasets)
+    cohorts.extend(tissues)
+
+    tissues = ['bladder_processed_div_1,5', 'kidney_cortex_processed_div_1,5', 'ovary_processed_div_1,5']
+    gtex_datasets = [
+        load_dataset(f'{gtex_dir}/gene_tpm_v11_{t}.csv', log2_transform=True)
+        for t in tissues
+    ]
+    datasets.extend(gtex_datasets)
+    cohorts.extend(tissues)
+
+    tissues = ['bladder_nn', 'kidney_cortex_nn', 'ovary_nn']
+    gtex_datasets = [
+        load_dataset(f'{gtex_dir}/gene_tpm_v11_{t}.csv', log2_transform=True)
+        for t in tissues
+    ]
+    datasets.extend(gtex_datasets)
+    cohorts.extend(tissues)
 
     plot_pca_umap(
-        data      = tcga_data,
-        gtex_data = gtex_data,
-        label_data = cohort,
-        label_gtex = f'GTEx {tissue}',
-        save_prefix = f'tcga_gtex_{tissue}',
+        datasets    = datasets,
+        labels      = cohorts,
+        save_prefix = 'tcga_5cohorts_gtex_3_cohorts_raw_nn_div',
     )
