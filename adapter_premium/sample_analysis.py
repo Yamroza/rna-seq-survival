@@ -9,13 +9,15 @@ from matplotlib.lines import Line2D
 from sklearn.decomposition import PCA
 from typing import Optional
 
-try:
-    import umap
-    HAS_UMAP = True
-except ImportError:
-    HAS_UMAP = False
-    print("[INFO] umap-learn not installed — UMAP panel will be skipped.")
+import umap
+import anndata as ad
 
+from pathlib import Path
+from datetime import datetime
+import scipy.sparse
+from tqdm import tqdm
+
+from mixers import DynamicDonorMixer
 
 # ---------------------------------------------------------------------------
 # Config
@@ -62,17 +64,137 @@ def load_dataset(path: str, log2_transform: bool = False,
     return df
 
 
-def match_genes_multi(datasets: list[pd.DataFrame],
-                      index_col: str = 'Unnamed: 0') -> tuple[list[np.ndarray], list]:
+def generate_pseudobulk_from_adata(
+    adata,
+    n_samples: int = 500,
+    n_cells: int = 50,
+    random_seed: int = 42,
+    donor_col: str = "donor_id",
+    tissue_col: str = "tissue_general"
+) -> pd.DataFrame:
     """
-    Intersect genes across all datasets.
-    Returns (list_of_X_matrices, shared_gene_names).
+    Generuje pseudobulk bezpośrednio z adata przy użyciu DynamicDonorMixer,
+    bez użycia scGPTDataset, słowników czy DataLoaderów.
     """
-    gene_sets = [set(c for c in df.columns if c != index_col) for df in datasets]
-    shared    = sorted(set.intersection(*gene_sets))
-    print(f"Shared genes across {len(datasets)} datasets: {len(shared):,}")
-    matrices  = [df[shared].values.astype(np.float32) for df in datasets]
-    return matrices, shared
+    rng = np.random.default_rng(random_seed)
+    
+    # 1. Inicjalizacja miksera
+    # Przekazujemy 'adata' jako atrapę datasetu, bo mikser potrzebuje dostępu do .X
+    mixer = DynamicDonorMixer(adata, donor_col=donor_col, tissue_col=tissue_col, n_cells=n_cells)
+    
+    # Tworzymy lekki obiekt zastępujący scGPTDataset, który mikser akceptuje
+    class SimpleDataset:
+        def __init__(self, adata):
+            self.X = adata.X
+            self.labels = np.zeros(adata.n_obs) # Atrapa etykiet, mikser ich wymaga w returnie
+
+    dataset_proxy = SimpleDataset(adata)
+    
+    # 2. Losowanie indeksów bazowych dla pseudobulków
+    n_samples = min(n_samples, adata.n_obs)
+    base_indices = rng.choice(adata.n_obs, size=n_samples, replace=False)
+    
+    pseudobulks = []
+    print(f"Generating {n_samples} pseudobulk samples (n_cells={n_cells})...")
+    
+    for idx in tqdm(base_indices):
+        # Wywołujemy Twój mikser bezpośrednio
+        # Zwraca: mixed_row, labels, lambdas
+        mixed_row, _, _ = mixer(idx, dataset_proxy)
+        
+        # Jeśli mixed_row jest rzadką macierzą (sparse), konwertujemy do gęstej tablicy
+        if scipy.sparse.issparse(mixed_row):
+            mixed_row = mixed_row.toarray().flatten()
+            
+        pseudobulks.append(mixed_row)
+    
+    # 3. Budowa wynikowego DataFrame
+    X_final = np.vstack(pseudobulks)
+    
+    # Używamy nazw genów bezpośrednio z adata.var_names
+    gene_names = adata.var['feature_name'].values.astype(str)
+    df = pd.DataFrame(X_final, columns=gene_names)
+    
+    # Dodanie kolumny ID
+    df.insert(0, 'Unnamed: 0', [f'pseudo_{n_cells}_cell_{i}' for i in range(len(df))])
+    
+    # Usunięcie kolumn, które są same zerami (opcjonalne, ale zalecane przed PCA)
+    non_zero_cols = df.columns[(df != 0).any(axis=0)]
+    df = df[non_zero_cols]
+    
+    print(f"Final pseudobulk shape: {df.shape}")
+    return df
+
+
+def match_genes_multi(
+    datasets: list[pd.DataFrame],
+    index_col: str = 'Unnamed: 0',
+):
+    """
+    1. Znajduje wspólne geny (intersection).
+    2. Sortuje je alfabetycznie.
+    3. Wyciąga dane, identyfikuje i agreguje duplikaty.
+    """
+    def clean_gene_name(name):
+        return str(name).split('.')[0].strip()
+
+    # --- KROK 1: Ujednolicenie nazw i znalezienie części wspólnej ---
+    gene_sets = []
+    cleaned_column_names = [] # Przechowujemy listy oczyszczonych nazw dla każdego datasetu
+
+    print("Step 1: Identifying shared genes...")
+    for df in datasets:
+        # Czyścimy nazwy kolumn (bez modyfikowania jeszcze oryginalnego DF)
+        curr_cleaned = [clean_gene_name(c) if c != index_col else c for c in df.columns]
+        cleaned_column_names.append(curr_cleaned)
+        
+        # Zbiór genów do części wspólnej (bez kolumny indeksu)
+        genes_only = set(c for c in curr_cleaned if c != index_col)
+        gene_sets.append(genes_only)
+
+    # Intersection + Sortowanie alfabetyczne
+    shared_genes = sorted(list(set.intersection(*gene_sets)))
+    print(f"  -> Found {len(shared_genes):,} shared genes (alphabetically sorted).")
+
+    # --- KROK 2: Wyciąganie danych i obsługa duplikatów ---
+    aligned_matrices = []
+    
+    print("Step 2: Processing datasets and handling duplicates...")
+    for i, df in enumerate(datasets):
+        # Tymczasowo podmieniamy nazwy kolumn na oczyszczone
+        temp_df = df.copy()
+        temp_df.columns = cleaned_column_names[i]
+        
+        # Wybieramy tylko wspólne geny. 
+        # Jeśli są duplikaty, temp_df[shared_genes] zwróci więcej kolumn niż len(shared_genes)
+        subset_df = temp_df[[index_col] + shared_genes]
+        
+        # Sprawdzamy duplikaty wśród wybranych genów
+        duplicated_mask = subset_df.columns.duplicated(keep=False)
+        if duplicated_mask.any():
+            # Wyciągamy nazwy duplikowanych genów
+            all_cols = subset_df.columns[duplicated_mask]
+            dups = sorted(list(set(all_cols) - {index_col}))
+            
+            print(f"  Warning: Dataset index {i} has {len(dups)} shared genes that are duplicated:")
+            print(f"  Duplicated genes: {', '.join(dups[:20])}{'...' if len(dups) > 20 else ''}")
+            
+            # Agregacja duplikatów (średnia)
+            subset_df = subset_df.set_index(index_col)
+            # Groupby po nazwie kolumny (level=0) i osi kolumn (axis=1)
+            subset_df = subset_df.groupby(axis=1, level=0).mean()
+            subset_df = subset_df.reset_index()
+        
+        # --- KROK 3: Finalne wyrównanie i konwersja do macierzy ---
+        # Reindex zapewnia, że kolumny są w identycznej kolejności alfabetycznej
+        X = subset_df.set_index(index_col).reindex(columns=shared_genes).values.astype(np.float32)
+        
+        if X.shape[1] != len(shared_genes):
+            raise ValueError(f"Consistency error in dataset {i}: {X.shape[1]} vs {len(shared_genes)}")
+            
+        aligned_matrices.append(X)
+        
+    return aligned_matrices, shared_genes
 
 
 def run_pca(X: np.ndarray, n_components: int = 50) -> tuple[np.ndarray, np.ndarray]:
@@ -85,8 +207,6 @@ def run_pca(X: np.ndarray, n_components: int = 50) -> tuple[np.ndarray, np.ndarr
 def run_umap(X: np.ndarray, n_neighbors: int = 30,
              min_dist: float = 0.3) -> Optional[np.ndarray]:
     """Fit UMAP, return 2D coords (or None if umap-learn unavailable)."""
-    if not HAS_UMAP:
-        return None
     print("Running UMAP...")
     reducer = umap.UMAP(n_components=2, random_state=SEED,
                         n_neighbors=n_neighbors, min_dist=min_dist)
@@ -192,15 +312,23 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
         for c, lbl in zip(colors, labels)
     ]
     fig.legend(handles=legend_handles, loc='lower center', ncol=min(len(labels), 5),
-               bbox_to_anchor=(0.5, -0.1), frameon=True,
+               bbox_to_anchor=(0.5, -0.2), frameon=True,
                handletextpad=0.4, columnspacing=1.5, borderpad=0.6, fontsize=9)
 
     # save
+    outdir = Path('sample_analysis_plots')
+    outdir.mkdir(exist_ok=True)
+
+    save_metadata(
+        save_prefix,
+        labels,
+        outdir=outdir,
+    )
+
     for ext in ('pdf', 'png'):
-        path = f'sample_analysis_plots/{save_prefix}_pca_umap.{ext}'
+        path = outdir / f'{ext}/{save_prefix}_pca_umap.{ext}'
         plt.savefig(path, bbox_inches='tight')
-        print(f"Saved: {path}")
-    plt.show()
+        print(f'Saved: {path}')
 
     # pairwise centroid distances (PC1-10)
     print("\nPairwise centroid L2 distances (PC1-10):")
@@ -213,46 +341,102 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
             dist = np.linalg.norm(centroids[a] - centroids[b])
             print(f"  {a} vs {b}: {dist:.3f}")
 
+def build_save_prefix(labels: list[str], extra_tag: str = ''):
+    """
+    Auto filename describing datasets.
+    """
+    short_labels = []
+    for lbl in labels:
+        cleaned = (
+            lbl.replace('TCGA-', '')
+               .replace('gene_tpm_v11_', '')
+               .replace('processed', 'proc')
+               .replace('kidney_cortex', 'kidney')
+               .replace(' ', '_')
+        )
+        short_labels.append(cleaned)
+    joined = '__'.join(short_labels)
+    if extra_tag:
+        return f'{extra_tag}__{joined}'
+    return joined
+
+
+def save_metadata(save_prefix, labels, outdir='sample_analysis_plots'):
+    Path(outdir).mkdir(exist_ok=True)
+    meta_path = Path(outdir) / f'metadata/{save_prefix}_metadata.txt'
+    with open(meta_path, 'w') as f:
+        f.write('Datasets used:\n')
+        for lbl in labels:
+            f.write(f' - {lbl}\n')
+        # f.write(f'\nShared genes: {shared_genes_count}\n')
+    print(f'Saved metadata: {meta_path}')
 
 # ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    data_dir = '../data/0_data_for_mlp_small_cohorts'
-    cohorts  = ['TCGA-BLCA', 'TCGA-KIRC', 'TCGA-LUAD', 'TCGA-OV', 'TCGA-UCEC']
 
-    gtex_dir = '../data/GTEx/processed' #/gene_tpm_v11_{tissue}_processed.csv'
-    tissues = ['bladder', 'kidney_cortex', 'ovary']
-    datasets = [
-        load_dataset(f'{data_dir}/{c}.star_tpm.csv', log2_transform=False)
-        for c in cohorts
-    ]
-    gtex_datasets = [
-        load_dataset(f'{gtex_dir}/gene_tpm_v11_{t}_processed.csv', log2_transform=True)
-        for t in tissues
-    ]
-    datasets.extend(gtex_datasets)
-    cohorts.extend(tissues)
+    # Config
+    SELECT_TCGA = ['TCGA-BLCA', 'TCGA-KIRC'] 
+    SELECT_GTEX = [] #, 'kidney_cortex']
 
-    tissues = ['bladder_processed_div_1,5', 'kidney_cortex_processed_div_1,5', 'ovary_processed_div_1,5']
-    gtex_datasets = [
-        load_dataset(f'{gtex_dir}/gene_tpm_v11_{t}.csv', log2_transform=True)
-        for t in tissues
-    ]
-    datasets.extend(gtex_datasets)
-    cohorts.extend(tissues)
+    LOAD_GTEX_VARIANTS = {'processed': True, 'div_1.5': False, 'nn': True}
 
-    tissues = ['bladder_nn', 'kidney_cortex_nn', 'ovary_nn']
-    gtex_datasets = [
-        load_dataset(f'{gtex_dir}/gene_tpm_v11_{t}.csv', log2_transform=True)
-        for t in tissues
-    ]
-    datasets.extend(gtex_datasets)
-    cohorts.extend(tissues)
+    DATA_DIR = '../data/0_data_for_mlp_small_cohorts'
+    GTEX_DIR = '../data/GTEx/processed'
+    ADATA_DIR = 'data_new/blkb_common_train.h5ad'
 
-    plot_pca_umap(
-        datasets    = datasets,
-        labels      = cohorts,
-        save_prefix = 'tcga_5cohorts_gtex_3_cohorts_raw_nn_div',
-    )
+    PSEUDO_CONFIG = {
+        'n_samples': 0, # set to 0 if you don't want any pseudobulks, default = 500
+        'n_cells_list': [50], # , 200], #, 1000],  # Tutaj podajesz dowolną liczbę wariantów
+        'adata_path': ADATA_DIR,
+    }
+
+    # Run
+    datasets = []
+    labels = []
+
+    # 1. Load TCGA
+    for cohort in SELECT_TCGA:
+        print(f"Loading TCGA: {cohort}")
+        datasets.append(load_dataset(f'{DATA_DIR}/{cohort}.star_tpm.csv', log2_transform=False))
+        labels.append(cohort)
+
+    # 2. Load GTEx
+    for tissue in SELECT_GTEX:
+        print(f"Loading GTEx: {tissue}")
+        if LOAD_GTEX_VARIANTS['processed']:
+            datasets.append(load_dataset(f'{GTEX_DIR}/gene_tpm_v11_{tissue}_processed.csv', log2_transform=False))
+            labels.append(f"GTEx_{tissue}")
+        if LOAD_GTEX_VARIANTS['div_1.5']:
+            datasets.append(load_dataset(f'{GTEX_DIR}/gene_tpm_v11_{tissue}_processed_div_1,5.csv', log2_transform=False))
+            labels.append(f"GTEx_{tissue}_div_1.5")
+        if LOAD_GTEX_VARIANTS['nn']:
+            datasets.append(load_dataset(f'{GTEX_DIR}/gene_tpm_v11_{tissue}_nn.csv', log2_transform=False))
+            labels.append(f"GTEx_{tissue}_nn")
+
+    # 3. Generate pesudo bulks for each n_cell value
+    if PSEUDO_CONFIG['n_samples'] > 0 and PSEUDO_CONFIG['n_cells_list']:
+        adata = ad.read_h5ad(PSEUDO_CONFIG['adata_path'])
+
+        for n_c in PSEUDO_CONFIG['n_cells_list']:
+            print(f"\n>>> Generating PseudoBulk: n_cells={n_c}")
+            pseudo_df = generate_pseudobulk_from_adata(
+                adata=adata,
+                n_samples=PSEUDO_CONFIG['n_samples'],
+                n_cells=n_c,
+            )
+            datasets.append(pseudo_df)
+            labels.append(f"Pseudo_{n_c}cells")
+
+    # 4. Plots
+    if datasets:
+        save_prefix = build_save_prefix(labels) #, extra_tag='multi_pseudo_comparison')
+        
+        print(f"\nFinal datasets in plot: {labels}")
+        plot_pca_umap(
+            datasets=datasets,
+            labels=labels,
+            save_prefix=save_prefix,
+        )
