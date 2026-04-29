@@ -221,7 +221,7 @@ def _scatter(ax, x, y, colors, all_labels, groups):
     color_map = dict(zip(groups, colors))
     for lbl in groups:
         idx = [i for i, l in enumerate(all_labels) if l == lbl]
-        ax.scatter(x[idx], y[idx], c=color_map[lbl], s=8, alpha=0.6,
+        ax.scatter(x[idx], y[idx], c=color_map[lbl], s=8, alpha=0.2,
                    linewidths=0, rasterized=True)
     ax.spines[['top', 'right']].set_visible(False)
 
@@ -234,84 +234,94 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
                   save_prefix: str = 'comparison',
                   umap_n_neighbors: int = 30,
                   umap_min_dist: float = 0.3):
-    """
-    Compare any number of bulk RNA-seq datasets with PCA + UMAP.
-
-    Parameters
-    ----------
-    datasets         : List of DataFrames (all in log2 TPM+1 space)
-    labels           : Legend label per dataset
-    colors           : Hex colors per dataset; defaults to built-in palette
-    n_pca_components : PCA components to compute
-    index_col        : Sample-ID column to exclude from gene matrix
-    save_prefix      : Output filename prefix
-    umap_n_neighbors : UMAP n_neighbors
-    umap_min_dist    : UMAP min_dist
-    """
+    
     assert len(datasets) == len(labels), "datasets and labels must have equal length"
     plt.rcParams.update(STYLE)
 
+    # --- LOGIKA GRUPOWANIA ---
+    display_labels = []
+    if GROUP_BY_SOURCE:
+        for lbl in labels:
+            if "TCGA" in lbl: display_labels.append("TCGA")
+            elif "GTEx" in lbl: display_labels.append("GTEx")
+            else: display_labels.append(lbl) # Dla Pseudo zostawia oryginał
+    else:
+        display_labels = labels
+
+    # Unikalne grupy do legendy i mapowania kolorów
+    unique_groups = []
+    for dl in display_labels:
+        if dl not in unique_groups:
+            unique_groups.append(dl)
+
     if colors is None:
-        colors = DEFAULT_COLORS[:len(datasets)]
+        colors = DEFAULT_COLORS[:len(unique_groups)]
+    
+    color_map = dict(zip(unique_groups, colors))
+    # -------------------------
 
     # align genes & stack
     matrices, _ = match_genes_multi(datasets, index_col)
     X_all       = np.vstack(matrices)
-    all_labels  = [lbl for lbl, X in zip(labels, matrices) for _ in range(len(X))]
+    
+    # Tworzymy listę labeli dla każdego punktu (używając display_labels)
+    all_point_labels = []
+    for lbl, mat in zip(display_labels, matrices):
+        all_point_labels.extend([lbl] * mat.shape[0])
+    print(f"DEBUG: TCGA points count: {all_point_labels.count('TCGA')}")
 
     # PCA & UMAP
     print("Running PCA...")
     coords, var_exp = run_pca(X_all, n_components=n_pca_components)
     umap_coords     = run_umap(X_all, n_neighbors=umap_n_neighbors, min_dist=umap_min_dist)
 
-    # layout
+    # layout (3 lub 4 panele)
     n_panels = 4 if umap_coords is not None else 3
     fig, axes = plt.subplots(1, n_panels, figsize=(3.5 * n_panels, 3.4),
                              gridspec_kw={'wspace': 0.38})
 
-    # A: PC1 vs PC2
-    _scatter(axes[0], coords[:, 0], coords[:, 1], colors, all_labels, labels)
+    # Funkcja pomocnicza do rysowania z użyciem color_map
+    def _grouped_scatter(ax, x, y, title):
+        for grp in unique_groups:
+            # Wybieramy indeksy punktów należących do danej grupy
+            idx = [i for i, l in enumerate(all_point_labels) if l == grp]
+            ax.scatter(x[idx], y[idx], c=color_map[grp], s=8, alpha=0.6,
+                       linewidths=0, rasterized=True, label=grp)
+        ax.set_title(title, pad=5, loc='left')
+        ax.spines[['top', 'right']].set_visible(False)
+
+    # Panele
+    _grouped_scatter(axes[0], coords[:, 0], coords[:, 1], '(A)\u2002PCA — PC1 vs PC2')
     axes[0].set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)')
     axes[0].set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)')
-    axes[0].set_title('(A)\u2002PCA — PC1 vs PC2', pad=5, loc='left')
 
-    # B: PC1 vs PC3
-    _scatter(axes[1], coords[:, 0], coords[:, 2], colors, all_labels, labels)
+    _grouped_scatter(axes[1], coords[:, 0], coords[:, 2], '(B)\u2002PCA — PC1 vs PC3')
     axes[1].set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)')
     axes[1].set_ylabel(f'PC3 ({var_exp[2]*100:.1f}%)')
-    axes[1].set_title('(B)\u2002PCA — PC1 vs PC3', pad=5, loc='left')
 
-    # C: scree
+    # C: Scree plot (bez zmian)
     ax = axes[2]
     cumvar = np.cumsum(var_exp) * 100
     ax.plot(range(1, len(cumvar) + 1), cumvar, color='#333333', lw=1.5)
-    for thresh, col in [(90, '0.55'), (95, '0.35')]:
-        cross = int(np.searchsorted(cumvar, thresh))
-        ax.axhline(thresh, color=col, lw=0.8, ls='--')
-        if cross < len(cumvar):
-            ax.axvline(cross + 1, color=col, lw=0.8, ls=':')
-            ax.text(cross + 1.5, thresh - 4, f'{cross+1} PCs', fontsize=7.5, color=col)
     ax.set_xlabel('Number of PCs')
     ax.set_ylabel('Cumulative variance explained (%)')
-    ax.set_title('(C)\u2002Scree plot (joint PCA)', pad=5, loc='left')
+    ax.set_title('(C)\u2002Scree plot', pad=5, loc='left')
     ax.set_ylim(0, 101)
-    ax.grid(True, axis='y', lw=0.4, ls=':', color='0.8')
     ax.spines[['top', 'right']].set_visible(False)
 
     # D: UMAP
     if umap_coords is not None:
-        _scatter(axes[3], umap_coords[:, 0], umap_coords[:, 1], colors, all_labels, labels)
+        _grouped_scatter(axes[3], umap_coords[:, 0], umap_coords[:, 1], '(D)\u2002UMAP')
         axes[3].set_xlabel('UMAP 1')
         axes[3].set_ylabel('UMAP 2')
-        axes[3].set_title('(D)\u2002UMAP', pad=5, loc='left')
 
-    # legend
+    # Legend (tylko unikalne grupy)
     legend_handles = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor=c,
-               markersize=6, label=lbl)
-        for c, lbl in zip(colors, labels)
+        Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[grp],
+               markersize=6, label=grp)
+        for grp in unique_groups
     ]
-    fig.legend(handles=legend_handles, loc='lower center', ncol=min(len(labels), 5),
+    fig.legend(handles=legend_handles, loc='lower center', ncol=min(len(unique_groups), 5),
                bbox_to_anchor=(0.5, -0.2), frameon=True,
                handletextpad=0.4, columnspacing=1.5, borderpad=0.6, fontsize=9)
 
@@ -332,12 +342,16 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
 
     # pairwise centroid distances (PC1-10)
     print("\nPairwise centroid L2 distances (PC1-10):")
+    
+    # Używamy unique_groups, aby liczyć dystanse między tym co w legendzie
+    # i all_point_labels, która jest teraz poprawnie zdefiniowana wewnątrz funkcji
     centroids = {
-        lbl: coords[[i for i, l in enumerate(all_labels) if l == lbl], :10].mean(0)
-        for lbl in labels
+        grp: coords[[i for i, l in enumerate(all_point_labels) if l == grp], :10].mean(0)
+        for grp in unique_groups
     }
-    for i, a in enumerate(labels):
-        for b in labels[i+1:]:
+    
+    for i, a in enumerate(unique_groups):
+        for b in unique_groups[i+1:]:
             dist = np.linalg.norm(centroids[a] - centroids[b])
             print(f"  {a} vs {b}: {dist:.3f}")
 
@@ -374,22 +388,71 @@ def save_metadata(save_prefix, labels, outdir='sample_analysis_plots'):
 # ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
+def print_dataset_stats(
+    datasets: list[pd.DataFrame],
+    labels: list[str],
+    index_col: str = 'Unnamed: 0'
+):
+    """
+    Basic per-dataset statistics for RNA-seq matrices.
+    """
+
+    print("\n" + "=" * 80)
+    print("DATASET STATISTICS")
+    print("=" * 80)
+
+    for df, label in zip(datasets, labels):
+
+        gene_cols = [c for c in df.columns if c != index_col]
+
+        X = df[gene_cols].values.astype(np.float32)
+
+        # per-sample stats
+        sample_sums = X.sum(axis=1)
+        sample_means = X.mean(axis=1)
+        sample_nonzero = (X > 0).sum(axis=1)
+
+        # global stats
+        zero_fraction = (X == 0).mean()
+
+        print(f"\nDataset: {label}")
+        print("-" * 60)
+        print(f"Shape:                  {X.shape}")
+        print(f"N samples:              {X.shape[0]:,}")
+        print(f"N genes:                {X.shape[1]:,}")
+
+        print("\nPer-sample statistics:")
+        print(f"  Mean total expression: {sample_sums.mean():.2f}")
+        print(f"  Median total expr:     {np.median(sample_sums):.2f}")
+        print(f"  Std total expr:        {sample_sums.std():.2f}")
+        print(f"  Min total expr:        {sample_sums.min():.2f}")
+        print(f"  Max total expr:        {sample_sums.max():.2f}")
+
+        print(f"\n  Mean gene expr/sample: {sample_means.mean():.4f}")
+        print(f"  Mean nonzero genes:    {sample_nonzero.mean():.1f}")
+        print(f"  Median nonzero genes:  {np.median(sample_nonzero):.1f}")
+
+        print("\nMatrix sparsity:")
+        print(f"  Zero fraction:         {zero_fraction:.4f}")
+        print(f"  Nonzero fraction:      {1-zero_fraction:.4f}")
+
 
 if __name__ == '__main__':
 
     # Config
-    SELECT_TCGA = ['TCGA-BLCA', 'TCGA-KIRC'] 
-    SELECT_GTEX = [] #, 'kidney_cortex']
+    GROUP_BY_SOURCE = True
+    SELECT_TCGA = ['TCGA-BLCA', 'TCGA-KIRC', 'TCGA-OV', 'TCGA-UCEC', 'TCGA-LUAD'] 
+    SELECT_GTEX = ['bladder', 'ovary', 'breast_mammary_tissue']
 
-    LOAD_GTEX_VARIANTS = {'processed': True, 'div_1.5': False, 'nn': True}
+    LOAD_GTEX_VARIANTS = {'processed': True, 'div_1.5': False, 'nn': False}
 
     DATA_DIR = '../data/0_data_for_mlp_small_cohorts'
     GTEX_DIR = '../data/GTEx/processed'
     ADATA_DIR = 'data_new/blkb_common_train.h5ad'
 
     PSEUDO_CONFIG = {
-        'n_samples': 0, # set to 0 if you don't want any pseudobulks, default = 500
-        'n_cells_list': [50], # , 200], #, 1000],  # Tutaj podajesz dowolną liczbę wariantów
+        'n_samples': 500, # set to 0 if you don't want any pseudobulks, default = 500
+        'n_cells_list': [2, 50, 300], # , 200], #, 1000],  # Tutaj podajesz dowolną liczbę wariantów
         'adata_path': ADATA_DIR,
     }
 
@@ -432,7 +495,10 @@ if __name__ == '__main__':
 
     # 4. Plots
     if datasets:
-        save_prefix = build_save_prefix(labels) #, extra_tag='multi_pseudo_comparison')
+        # print_dataset_stats(datasets, labels)
+        print('Finished')
+        save_prefix = build_save_prefix(labels, extra_tag=f'grouped_{GROUP_BY_SOURCE}')
+        print('Finished 2')
         
         print(f"\nFinal datasets in plot: {labels}")
         plot_pca_umap(
