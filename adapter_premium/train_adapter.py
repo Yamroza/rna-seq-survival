@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(".."))
 from utils import get_scgpt_model
 from premium_datasets import scGPTDataset, collate_fn
 from adapters import scGPTClassifier, train_epoch, eval_epoch, MLPClassifier
-from mixers import NoMixer, LinearTwoCellMixer, MultiCellMixer, DynamicDonorMixer
+from mixers import NoMixer, LinearTwoCellMixer, MultiCellMixer, DynamicDonorMixer, LinearTwoCellMixerNN
 
 
 def main():
@@ -57,6 +57,7 @@ def main():
     mixer_dict = {
         'scDataset': NoMixer(),
         'bulkDataset': LinearTwoCellMixer(),
+        'bulkDatasetNN': LinearTwoCellMixerNN(),
         '3dataset' : MultiCellMixer(),
         'donorDataset': DynamicDonorMixer(adata, donor_col="donor_id", n_cells=config.n_cells)
     }

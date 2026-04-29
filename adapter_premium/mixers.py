@@ -31,6 +31,44 @@ class LinearTwoCellMixer(BaseMixer):
         
         return row_mixed, labels, lambdas
 
+class LinearTwoCellMixerNN(BaseMixer):
+    def __init__(self, target_sum=1e6):
+        super().__init__()
+        self.target_sum = target_sum
+
+    def _extract_dense_row(self, row):
+        if sp.issparse(row):
+            return row.toarray().flatten()
+        elif isinstance(row, np.matrix):
+            return np.asarray(row).flatten()
+        return row
+
+    def __call__(self, idx, dataset):
+        random_idx = random.randint(0, dataset.samples - 1)
+        lambda_val = random.random()
+        row1 = self._extract_dense_row(dataset.X[idx])
+        row2 = self._extract_dense_row(dataset.X[random_idx])
+        mixed_row = (lambda_val * row1 + (1.0 - lambda_val) * row2).astype(np.float32)
+
+        if self.target_sum is not None:
+            current_sum = mixed_row.sum()
+            if current_sum > 0:
+                mixed_row = (mixed_row / current_sum) * self.target_sum
+
+        if (mixed_row < 0).any():
+            mixed_row = np.clip(mixed_row, a_min=0, a_max=None)
+
+        mixed_row = np.log2(mixed_row)
+        if np.isnan(mixed_row).any():
+            mixed_row = np.nan_to_num(mixed_row, nan=0.0)
+        mixed_row_sparse = sp.csr_matrix(mixed_row.reshape(1, -1))
+                
+        # Zwracamy dwie etykiety i DWIE wagi
+        labels = torch.tensor([dataset.labels[idx], dataset.labels[random_idx]], dtype=torch.long)
+        lambdas = torch.tensor([lambda_val, 1 - lambda_val], dtype=torch.float32)
+        
+        return mixed_row_sparse[0], labels, lambdas
+    
 
 class MultiCellMixer(BaseMixer):
     """Miesza 3 losowe komórki w proporcjach z rozkładu Dirichleta."""
