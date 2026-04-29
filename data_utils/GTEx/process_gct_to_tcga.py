@@ -16,9 +16,12 @@ def main():
     parser.add_argument("--gene_info_file", default="../../data/gene_info.csv", help="CSV mapping Ensembl IDs to gene symbols (columns: feature_id, feature_name).")
     parser.add_argument("--gene_info_table", default="../../data/gene_info_table.csv", help="CSV with gene metadata including gene_type and ensembl_id columns.")
     parser.add_argument("--save_dir", default="../../data/GTEx/processed", help="Output directory for the processed CSV.")
-
+    
+    # preprocessing flags
+    parser.add_argument("--nn", action="store_true", help="No normalization: skip log2(TPM + 1)")
+    parser.add_argument("--div15", action="store_true", help="Divide data by 1.5")
+    
     args = parser.parse_args()
-
 
     gtex_filename_path = os.path.join(args.gtex_dir, f"{args.filename}.gct")
     df_gtex = pd.read_csv(gtex_filename_path, sep='\t', skiprows=2)
@@ -92,12 +95,24 @@ def main():
     df_filtered = df[df.columns.intersection(protein_coding)]
     df_filtered = df_filtered[~df_filtered.index.duplicated(keep="first")]
 
-    # normalization
-    df_filtered[protein_coding] = np.log2(df_filtered[protein_coding].astype(float) + 1)
+    # --- Normalization logic ---
+    suffix = ""
+    if args.nn:
+        print("Skipping log2 normalization (--nn active).")
+        suffix += "_nn"
+    else:
+        print("Applying log2(TPM + 1) normalization.")
+        df_filtered = np.log2(df_filtered + 1)
+
+    if args.div15:
+        print("Dividing data by 1.5 (--div15 active).")
+        df_filtered = df_filtered / 1.5
+        suffix += "_div15"
+
 
     os.makedirs(args.save_dir, exist_ok=True)
-    # Zapisujemy gotowy plik, np. z dopiskiem '_processed'
-    save_path = os.path.join(args.save_dir, f"{args.filename}_processed.csv")
+    save_filename = f"{args.filename}{suffix}_processed.csv"
+    save_path = os.path.join(args.save_dir, save_filename)
     df_filtered.to_csv(save_path)
     print(f"Saved processed data to: {save_path}")
 
