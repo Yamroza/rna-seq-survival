@@ -6,9 +6,9 @@ LRS=(0.0001) # 0.00005 0.00001)
 HIDDENS=("512 512") # "512 128")
 SEQ_LENGTH=(2000) # (1000 2000 3000)
 DROPOUTS=(0)
-DATA_PATH="data_new/blkb_common_train.h5ad"
-DATASET="donorDataset"
-EXP_CODE="adapter_premium_donor"
+DATA_PATH="data_new/blkb_simp_100k_path_train.h5ad"
+DATASET="bulkDataset"
+EXP_CODE="adapter_premium"
 
 for LR in "${LRS[@]}"; do
     for SEQ in "${SEQ_LENGTH[@]}"; do

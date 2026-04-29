@@ -3,7 +3,7 @@
 #SBATCH --output=logs/train_%j.log
 #SBATCH --error=logs/train_%j.err
 #SBATCH --partition=gpua6000
-#SBATCH --time=3-12:00:00
+#SBATCH --time=9-12:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=40G
@@ -44,6 +44,7 @@ DATA_FILENAME="${DATA_FILENAME%.*}"
 SAVE_CONFIG="scgpt_dataset_${DATASET}_train_data_${DATA_FILENAME}_lr_${LR}_bs_${BATCH_SIZE}_ep_${EPOCHS}_drop_${DROPOUT}_seqlen_${SEQ_LENGTH}_hiddims_${HIDDEN// /_}"
 SAVE_NAME="epoch.pt"
 SAVE_PATH="checkpoints/the_great/${SAVE_CONFIG}/${SAVE_NAME}"
+RESUME_FROM="/scratch/2370352/my-research/adapter_premium/checkpoints/the_great/scgpt_dataset_bulkDataset_train_data_blkb_simp_100k_path_train_lr_0.0001_bs_128_ep_25_drop_0_seqlen_2000_hiddims_512_512/epoch_7.pt"
 
 python train_adapter.py \
     --lr $LR \
@@ -55,6 +56,7 @@ python train_adapter.py \
     --seq_length $SEQ_LENGTH \
     --hidden_dims $HIDDEN \
     --dataset $DATASET \
+    --resume_from $RESUME_FROM
     # --subset 100
 
 echo "====================================================="
