@@ -1,5 +1,7 @@
+import numpy as np
+
 from data.survival_dataset import RNASurvivalDataset
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 
 def obtain_dataloader(args, fold, mode="train"):
@@ -7,13 +9,30 @@ def obtain_dataloader(args, fold, mode="train"):
     type = obtain_data_type(args) # gene or pathway level
     dataset = RNASurvivalDataset(args, mode, type, fold)
 
+    # choosing a random subset
+    if mode == "train" and hasattr(args, 'train_subset') and args.train_subset < 1.0:
+        np.random.seed(args.seed)
+        
+        num_samples = len(dataset)
+        subset_size = int(num_samples * args.train_subset)
+    
+        indices = np.arange(num_samples)
+        np.random.shuffle(indices)
+        subset_indices = indices[:subset_size]
+        
+        dataset = Subset(dataset, subset_indices)
+        
+        print(f"Using a subset of {args.train_subset*100}% for training.")
+
     print(f"Dataset {mode} for fold {fold} is constructed and checked!")
     print(f'Split: {fold}, n: {len(dataset)}')
 
     shuffle_mode = mode == "train"
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=shuffle_mode, num_workers=args.num_workers)
     
-    return dataloader, dataset.get_rna_dims()
+    # choose correct rna_dims depending on the mode
+    rna_dims = dataset.dataset.get_rna_dims() if isinstance(dataset, Subset) else dataset.get_rna_dims()
+    return dataloader, rna_dims
 
 
 def obtain_data_info(args, fold, mode="train"):

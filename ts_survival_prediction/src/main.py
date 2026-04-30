@@ -117,6 +117,9 @@ if __name__ == "__main__":
     parser.add_argument('--log_dir', default='logs',help='results directory')
     parser.add_argument('--exp_code', type=str, default='test', help='experiment code for saving results')
 
+    # limiting training set size args
+    parser.add_argument('--train_subset', type=float, default=1, help='how big part of a training set should be used')
+
     args = parser.parse_args()
 
     main(args)
