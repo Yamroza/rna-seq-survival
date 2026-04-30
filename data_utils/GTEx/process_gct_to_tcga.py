@@ -95,6 +95,9 @@ def main():
     df_filtered = df[df.columns.intersection(protein_coding)]
     df_filtered = df_filtered[~df_filtered.index.duplicated(keep="first")]
 
+    # Conversion to numbers
+    df_filtered = df_filtered.apply(pd.to_numeric, errors='coerce')
+
     # --- Normalization logic ---
     suffix = ""
     if args.nn:
