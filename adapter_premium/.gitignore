@@ -3,6 +3,7 @@ data
 data_new
 embeddings
 checkpoints
+checkpoints_finetune
 __pycache__
 logs
 wandb
