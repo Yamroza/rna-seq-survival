@@ -2,7 +2,11 @@ import anndata as ad
 import pandas as pd
 import numpy as np
 import scanpy as sc
+import wandb
 import os
+import argparse
+from datetime import datetime
+import json
 
 import torch
 import torch.nn.functional as F
@@ -18,8 +22,35 @@ from utils import get_scgpt_model, binning
 torch.manual_seed(42)
 np.random.seed(42)
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--dataset", type=str, default="gene_tpm_v11_bladder_processed.csv",)
+    parser.add_argument("--data_path", type=str, default="../data/GTEx/processed/")
+    parser.add_argument("--n_hvg", type=int, default=2000)
+    parser.add_argument("--n_bins", type=int, default=51)
+    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--mask_ratio", type=float, default=0.15)
+
+    return parser.parse_args()
+
+args = parse_args()
+
+# ── WANDB SETUP ───────────────────────────────────────────────────────────
+dataset_name = os.path.splitext(args.dataset)[0]
+run_name = f"{dataset_name}_hvg{args.n_hvg}_bins{args.n_bins}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+wandb.init(
+    project="finetuning-scgpt-on-bulk",
+    name=run_name,
+    config=vars(args)
+)
+
+config = wandb.config
+
 # bulk_data_path = '../data/GTEx/processed/all_gtex_processed.csv'
-bulk_data_path = '../data/GTEx/processed/gene_tpm_v11_bladder_processed.csv'
+bulk_data_path = os.path.join(args.data_path, args.dataset)
 
 df = pd.read_csv(bulk_data_path, index_col=0)
 adata = ad.AnnData(X=df.values)
@@ -35,16 +66,29 @@ PAD_ID = vocab['<pad>']
 genes_in_vocab = [g for g in adata.var_names if g in vocab]
 adata = adata[:, genes_in_vocab].copy()
 
-sc.pp.highly_variable_genes(adata, n_top_genes=2000)
+sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg)
 adata = adata[:, adata.var['highly_variable']]
 
 # Tokenize gene names to IDs
 gene_ids = vocab(adata.var_names.tolist())
 
+# save for other dataset
+save_dir = f"checkpoints_finetune/{run_name}/"
+os.makedirs(save_dir, exist_ok=True)
+
+gene_list = adata.var_names.tolist()
+
+with open(os.path.join(save_dir, "gene_set.json"), "w") as f:
+    json.dump({
+        "genes": gene_list,
+        "n_hvg": args.n_hvg,
+        "n_bins": args.n_bins
+    }, f)
+
 adata = adata.copy()
 X = np.asarray(adata.X)
 
-adata.X = np.stack([binning(row, 51) for row in X])
+adata.X = np.stack([binning(row, args.n_bins) for row in X])
 
 def mask_expression(values, pad_mask, mask_ratio=0.15):
     prob_matrix = torch.full(values.shape, mask_ratio)
@@ -69,6 +113,9 @@ def masked_mse_loss(predicts, targets, mask):
     """
     loss = F.mse_loss(predicts[mask], targets[mask].float())
     return loss
+
+def mae(preds, targets, mask):
+    return torch.mean(torch.abs(preds[mask] - targets[mask]))
 
 class SCDataset(Dataset):
     def __init__(self, data_matrix, gene_ids, batch_labels):
@@ -148,22 +195,23 @@ val_size = len(dataset) - train_size
 
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
+train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
 
 # Przygotowanie urządzenia (GPU jeśli dostępne, inaczej CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 scgpt_model.to(device)
 
 scgpt_model.train()
-optimizer = torch.optim.Adam(scgpt_model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(scgpt_model.parameters(), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-num_epochs = 10
+num_epochs = args.epochs
 
 for epoch in range(num_epochs):
     scgpt_model.train()
     total_loss = 0
+    total_loss_mae = 0
     n_batches = 0
 
     for src, values, pad_mask, batch_idx in train_loader:
@@ -173,7 +221,7 @@ for epoch in range(num_epochs):
         values = values.to(device)
         pad_mask = pad_mask.to(device)
 
-        masked_values, bool_mask = mask_expression(values, pad_mask)
+        masked_values, bool_mask = mask_expression(values, pad_mask, mask_ratio=args.mask_ratio)
 
         results = scgpt_model(
             src=src,
@@ -187,6 +235,7 @@ for epoch in range(num_epochs):
 
         preds = results["mlm_output"]
         loss = masked_mse_loss(preds, values, bool_mask)
+        loss_mae = mae(preds, values, bool_mask)
 
         loss.backward()
 
@@ -194,31 +243,42 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         total_loss += loss.item()
+        total_loss_mae += loss_mae.item()
+
         n_batches += 1
+        if n_batches % 10 == 0:
+            wandb.log({
+                "train/loss_step": loss.item(),
+                "train/mae_step": loss_mae.item(),
+                "lr": optimizer.param_groups[0]["lr"]
+            })
 
     scheduler.step()
 
     avg_loss = total_loss / n_batches
+    avg_loss_mae = total_loss_mae / n_batches
     print(f"Epoch {epoch+1}/{num_epochs} | Loss: {avg_loss:.4f}")
 
-    save_path = f"checkpoints_finetune/todo_config/scgpt_epoch_{epoch+1}.pt"
+    save_path = f"checkpoints_finetune/{run_name}/scgpt_epoch_{epoch+1}.pt"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     torch.save({
         "epoch": epoch,
         "model_state_dict": scgpt_model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
         "loss": avg_loss
     }, save_path)
     
     scgpt_model.eval()
     val_loss = 0
+    val_loss_mae = 0
     with torch.no_grad():
         for src, values, pad_mask, _ in val_loader:
             src = src.to(device)
             values = values.to(device)
             pad_mask = pad_mask.to(device)
 
-            masked_values, bool_mask = mask_expression(values, pad_mask)
+            masked_values, bool_mask = mask_expression(values, pad_mask, mask_ratio=args.mask_ratio)
 
             results = scgpt_model(
                 src=src,
@@ -232,7 +292,20 @@ for epoch in range(num_epochs):
             preds = results["mlm_output"]
 
             loss = masked_mse_loss(preds, values, bool_mask)
+            loss_mae = mae(preds, values, bool_mask)
             val_loss += loss.item()
+            val_loss_mae += loss_mae.item()
 
     val_loss /= len(val_loader)
+    val_loss_mae /= len(val_loader)
     print(f"Val Loss: {val_loss:.4f}")
+
+    wandb.log({
+        "train/loss_epoch": avg_loss,
+        "train/loss_epoch_mae": avg_loss_mae,
+        "val/loss": val_loss,
+        "val/loss_mae": val_loss_mae,
+        "epoch": epoch + 1
+    })
+
+
