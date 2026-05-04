@@ -2,6 +2,7 @@
 PCA and UMAP visualization comparing multiple bulk RNA-seq datasets.
 """
 
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -17,7 +18,7 @@ from datetime import datetime
 import scipy.sparse
 from tqdm import tqdm
 
-from mixers import DynamicDonorMixer
+from mixers import DynamicDonorMixer, LinearTwoCellMixer
 
 # ---------------------------------------------------------------------------
 # Config
@@ -69,6 +70,7 @@ def generate_pseudobulk_from_adata(
     n_samples: int = 500,
     n_cells: int = 50,
     random_seed: int = 42,
+    mixer_type: str = 'donor_mixer',
     donor_col: str = "donor_id",
     tissue_col: str = "tissue_general"
 ) -> pd.DataFrame:
@@ -80,8 +82,11 @@ def generate_pseudobulk_from_adata(
     
     # 1. Inicjalizacja miksera
     # Przekazujemy 'adata' jako atrapę datasetu, bo mikser potrzebuje dostępu do .X
-    mixer = DynamicDonorMixer(adata, donor_col=donor_col, tissue_col=tissue_col, n_cells=n_cells)
-    
+    if mixer_type == 'donor_mixer':
+        mixer = DynamicDonorMixer(adata, donor_col=donor_col, tissue_col=tissue_col, n_cells=n_cells)
+    else:
+        mixer = LinearTwoCellMixer()
+
     # Tworzymy lekki obiekt zastępujący scGPTDataset, który mikser akceptuje
     class SimpleDataset:
         def __init__(self, adata):
@@ -355,7 +360,7 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
             dist = np.linalg.norm(centroids[a] - centroids[b])
             print(f"  {a} vs {b}: {dist:.3f}")
 
-def build_save_prefix(labels: list[str], extra_tag: str = ''):
+def build_save_prefix(labels: list[str], extra_tag: str = '', n_samples: int = 0, mixer: str = 'donor_mixer'):
     """
     Auto filename describing datasets.
     """
@@ -370,8 +375,10 @@ def build_save_prefix(labels: list[str], extra_tag: str = ''):
         )
         short_labels.append(cleaned)
     joined = '__'.join(short_labels)
-    if extra_tag:
-        return f'{extra_tag}__{joined}'
+    if extra_tag and n_samples > 0:
+        return f'{extra_tag}_{joined}_{mixer}_n_samples_{n_samples}'
+    elif extra_tag:
+        return f'{extra_tag}_{joined}'
     return joined
 
 
@@ -438,23 +445,30 @@ def print_dataset_stats(
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="sample analysis")
 
-    
+    parser.add_argument("--tcga", type=str, nargs='*', default=[], help="List of TCGA project codes")
+    parser.add_argument("--gtex", type=str, nargs='*', default=[], help="List of GTEx tissue names")
+    parser.add_argument("--n_samples", type=int, default=0, help="For pseudobulk")
+    parser.add_argument("--n_cells", type=int, nargs='+', default=[2], help="For pseudobulk")
+    parser.add_argument("--group_by_source", action="store_true", help="Group labels as TCGA/GTEx") 
+    parser.add_argument("--mixer_type", type=str, default='donor_mixer')
+
+    args = parser.parse_args()
+
     # Config
-    GROUP_BY_SOURCE = True
-    # SELECT_TCGA = ['TCGA-BLCA', 'TCGA-KIRC', 'TCGA-OV', 'TCGA-UCEC', 'TCGA-LUAD'] 
-    # SELECT_GTEX = ['bladder', 'ovary', 'breast_mammary_tissue']
-    SELECT_TCGA = ['TCGA-BLCA']
-    SELECT_GTEX = ['bladder']
+    GROUP_BY_SOURCE = args.group_by_source
+    SELECT_TCGA = args.tcga
+    SELECT_GTEX = args.gtex
     LOAD_GTEX_VARIANTS = {'processed': True, 'div_1.5': False, 'nn': False}
 
-    DATA_DIR = '../data/0_data_for_mlp'
+    DATA_DIR = '../data/0_data_for_mlp_small_cohorts'
     GTEX_DIR = '../data/GTEx/processed'
     ADATA_DIR = 'data_new/blkb_common_train.h5ad'
 
     PSEUDO_CONFIG = {
-        'n_samples': 0, # set to 0 if you don't want any pseudobulks, default = 500
-        'n_cells_list': [2, 50, 300], # , 200], #, 1000],  # Tutaj podajesz dowolną liczbę wariantów
+        'n_samples': args.n_samples,  # set to 0 if you don't want any pseudobulks
+        'n_cells_list': args.n_cells, # Tutaj podajesz dowolną liczbę wariantów
         'adata_path': ADATA_DIR,
     }
 
@@ -491,6 +505,7 @@ if __name__ == '__main__':
                 adata=adata,
                 n_samples=PSEUDO_CONFIG['n_samples'],
                 n_cells=n_c,
+                mixer_type=args.mixer_type
             )
             datasets.append(pseudo_df)
             labels.append(f"Pseudo_{n_c}cells")
@@ -499,7 +514,7 @@ if __name__ == '__main__':
     if datasets:
         # print_dataset_stats(datasets, labels)
         print('Finished')
-        save_prefix = build_save_prefix(labels, extra_tag=f'grouped_{GROUP_BY_SOURCE}')
+        save_prefix = build_save_prefix(labels, extra_tag=f'grouped_{GROUP_BY_SOURCE}', n_samples=args.n_samples, mixer=args.mixer_type)
         print('Finished 2')
         
         print(f"\nFinal datasets in plot: {labels}")
