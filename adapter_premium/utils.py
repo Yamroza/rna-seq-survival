@@ -24,6 +24,8 @@ def get_scgpt_model(
     model_dir: str,
     device: str = 'cuda',
     use_fast_transformer: bool = True,
+    eval: bool = True,
+    do_mvc: bool = True
 ) -> torch.nn.Module:
     """
     Get scGPT model and vocab from given path
@@ -58,7 +60,7 @@ def get_scgpt_model(
         dropout=model_configs["dropout"],
         pad_token=model_configs["pad_token"],
         pad_value=model_configs["pad_value"],
-        do_mvc=True,
+        do_mvc=do_mvc,
         do_dab=False,
         use_batch_labels=False,
         domain_spec_batchnorm=False,
@@ -69,7 +71,8 @@ def get_scgpt_model(
     )
     load_pretrained(model, torch.load(model_file, map_location=device), verbose=False)
     model.to(device)
-    model.eval()
+    if eval:
+        model.eval()
 
     return model, vocab
 
@@ -113,6 +116,7 @@ def binning(
     row: Union[np.ndarray, torch.Tensor], n_bins: int
 ) -> Union[np.ndarray, torch.Tensor]:
     """Binning the row into n_bins."""
+    row = np.asarray(row).flatten()
     dtype = row.dtype
     return_np = False if isinstance(row, torch.Tensor) else True
     row = row.cpu().numpy() if isinstance(row, torch.Tensor) else row
