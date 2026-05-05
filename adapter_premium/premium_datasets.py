@@ -1,6 +1,7 @@
 
 import sys
 import os
+import json
 
 sys.path.append(os.path.abspath(".."))
 
@@ -115,6 +116,8 @@ def collate_fn(batch):
     # Sprawdzamy pierwszy element. Jeśli to string, zakładamy tryb "ID/Inference"
     first_label = labels_list[0]
     
+    print(type(labels_list[0]))
+
     if isinstance(first_label, str):
         # TRYB PREDYKCJI: labels_list to lista ID (stringów)
         labels_final = list(labels_list) 
@@ -128,3 +131,56 @@ def collate_fn(batch):
         lambdas_final = pad_sequence(lambdas_tensors, batch_first=True, padding_value=0.0)
 
     return src_pad, val_pad, mask_pad, labels_final, lambdas_final
+
+
+class finetunedSCGPTDataset(Dataset):
+    def __init__(self, data, vocab, gene_list_file):
+        self.data = data.copy()
+        self.data = self.data.rename(columns={self.data.columns[0]: 'id'})
+
+        # ── LOAD GENE LIST ───────────────────────────────────────────────
+        with open(gene_list_file, "r") as f:
+            gene_info = json.load(f)
+
+        self.gene_list = gene_info["genes"]
+        self.n_bins = gene_info["n_bins"]
+
+        # ── FILTER GENES (NA STRINGACH!) ─────────────────────────────────
+        valid_genes = [
+            g for g in self.gene_list
+            if g in self.data.columns and g in vocab
+        ]
+
+        print("genes in file:", len(self.gene_list))
+        print("genes in data:", len(self.data.columns))
+        print("overlap:", len(valid_genes))
+
+        if len(valid_genes) == 0:
+            raise ValueError("No overlap between dataset and gene_list!")
+
+        # zachowaj kolejność z gene_list
+        self.data = self.data[["id"] + valid_genes]
+
+        # ── MAP TO IDs (dopiero teraz!) ──────────────────────────────────
+        self.gene_ids = torch.tensor(
+            [vocab[g] for g in valid_genes],
+            dtype=torch.long
+        )
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data.iloc[idx]
+        row_id = str(row["id"])
+
+        values = row.values[1:].astype(np.float32)
+        values = torch.tensor(values, dtype=torch.float32)
+
+        # ── BINNING ──────────────────────────────────────────────────────
+        values = binning(values, self.n_bins)
+        values = torch.tensor(values, dtype=torch.float32)
+        # ── MASK (brak paddingu tutaj) ───────────────────────────────────
+        mask = torch.zeros(len(self.gene_ids), dtype=torch.bool)
+
+        return self.gene_ids, values, mask, row_id, 0.0
