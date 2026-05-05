@@ -7,6 +7,7 @@ import os
 import argparse
 from datetime import datetime
 import json
+from tqdm import tqdm
 
 import torch
 import torch.nn.functional as F
@@ -29,9 +30,9 @@ def parse_args():
     parser.add_argument("--data_path", type=str, default="../data/GTEx/processed/")
     parser.add_argument("--n_hvg", type=int, default=2000)
     parser.add_argument("--n_bins", type=int, default=51)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--mask_ratio", type=float, default=0.15)
 
     return parser.parse_args()
@@ -214,7 +215,8 @@ for epoch in range(num_epochs):
     total_loss_mae = 0
     n_batches = 0
 
-    for src, values, pad_mask, batch_idx in train_loader:
+    train_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]")
+    for src, values, pad_mask, batch_idx in train_bar:
         optimizer.zero_grad()
 
         src = src.to(device)
@@ -249,8 +251,8 @@ for epoch in range(num_epochs):
         if n_batches % 10 == 0:
             wandb.log({
                 "train/loss_step": loss.item(),
-                "train/mae_step": loss_mae.item(),
-                "lr": optimizer.param_groups[0]["lr"]
+                "train/loss_mae_step": loss_mae.item(),
+                "train/lr_step": optimizer.param_groups[0]["lr"]
             })
 
     scheduler.step()
@@ -272,8 +274,10 @@ for epoch in range(num_epochs):
     scgpt_model.eval()
     val_loss = 0
     val_loss_mae = 0
+    
+    val_bar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]")
     with torch.no_grad():
-        for src, values, pad_mask, _ in val_loader:
+        for src, values, pad_mask, _ in val_bar:
             src = src.to(device)
             values = values.to(device)
             pad_mask = pad_mask.to(device)
@@ -301,10 +305,11 @@ for epoch in range(num_epochs):
     print(f"Val Loss: {val_loss:.4f}")
 
     wandb.log({
-        "train/loss_epoch": avg_loss,
-        "train/loss_epoch_mae": avg_loss_mae,
-        "val/loss": val_loss,
+        "train/loss_mse": avg_loss,
+        "train/loss_mae": avg_loss_mae,
+        "val/loss_mse": val_loss,
         "val/loss_mae": val_loss_mae,
+        "train/lr_epoch": optimizer.param_groups[0]["lr"],
         "epoch": epoch + 1
     })
 
