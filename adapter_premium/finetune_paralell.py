@@ -56,47 +56,6 @@ if is_main:
 
     config = wandb.config
 
-# bulk_data_path = '../data/GTEx/processed/all_gtex_processed.csv'
-bulk_data_path = os.path.join(args.data_path, args.dataset)
-
-df = pd.read_csv(bulk_data_path, index_col=0)
-adata = ad.AnnData(X=df.values)
-adata.obs_names = df.index
-adata.var_names = df.columns
-
-model_path = "../papers/scgpt/save/whole_human"
-scgpt_model, vocab = get_scgpt_model(model_path, device='cpu', eval=False, do_mvc=False)
-
-PAD_ID = vocab['<pad>']
-
-# Filter genes that are in the vocabulary
-genes_in_vocab = [g for g in adata.var_names if g in vocab]
-adata = adata[:, genes_in_vocab].copy()
-
-sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg)
-adata = adata[:, adata.var['highly_variable']]
-
-# Tokenize gene names to IDs
-gene_ids = vocab(adata.var_names.tolist())
-
-# save for other dataset
-save_dir = f"checkpoints_finetune/{run_name}/"
-os.makedirs(save_dir, exist_ok=True)
-
-gene_list = adata.var_names.tolist()
-
-with open(os.path.join(save_dir, "gene_set.json"), "w") as f:
-    json.dump({
-        "genes": gene_list,
-        "n_hvg": args.n_hvg,
-        "n_bins": args.n_bins
-    }, f)
-
-adata = adata.copy()
-X = np.asarray(adata.X)
-
-adata.X = np.stack([binning(row, args.n_bins) for row in X])
-
 def mask_expression(values, pad_mask, mask_ratio=0.15):
     prob_matrix = torch.full(values.shape, mask_ratio)
 
@@ -200,16 +159,64 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
+# Przygotowanie urządzenia (GPU jeśli dostępne, inaczej CPU)
+local_rank = setup_ddp()
+device = torch.device(f"cuda:{local_rank}")
+
+# bulk_data_path = '../data/GTEx/processed/all_gtex_processed.csv'
+bulk_data_path = os.path.join(args.data_path, args.dataset)
+
+print(f"Loading data from {bulk_data_path}")
+df = pd.read_csv(bulk_data_path, index_col=0)
+adata = ad.AnnData(X=df.values)
+adata.obs_names = df.index
+adata.var_names = df.columns
+
+model_path = "../papers/scgpt/save/whole_human"
+print(f"Loading model from {model_path}")
+scgpt_model, vocab = get_scgpt_model(model_path, device=device, eval=False, do_mvc=False)
+
+PAD_ID = vocab['<pad>']
+
+# Filter genes that are in the vocabulary
+print("Filtering genes that are in the vocabulary")
+genes_in_vocab = [g for g in adata.var_names if g in vocab]
+adata = adata[:, genes_in_vocab].copy()
+
+print("Identifying and filtering only highly variable genes")
+sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg)
+adata = adata[:, adata.var['highly_variable']]
+
+# Tokenize gene names to IDs
+gene_ids = vocab(adata.var_names.tolist())
+
+# save for other dataset
+save_dir = f"checkpoints_finetune/{run_name}/"
+os.makedirs(save_dir, exist_ok=True)
+
+gene_list = adata.var_names.tolist()
+
+with open(os.path.join(save_dir, "gene_set.json"), "w") as f:
+    json.dump({
+        "genes": gene_list,
+        "n_hvg": args.n_hvg,
+        "n_bins": args.n_bins
+    }, f)
+
+adata = adata.copy()
+X = np.asarray(adata.X)
+
+print("Binning gene expression values")
+adata.X = np.stack([binning(row, args.n_bins) for row in X])
+
 binned_counts = adata.X
 vocab_gene_ids = gene_ids
 batch_indices = np.zeros(adata.shape[0], dtype=np.int64)
 
 # model
-# Przygotowanie urządzenia (GPU jeśli dostępne, inaczej CPU)
-local_rank = setup_ddp()
-device = torch.device(f"cuda:{local_rank}")
-
+print("Loading model to device")
 scgpt_model.to(device)
+print(f"Rank {local_rank}: num params = {sum(p.numel() for p in scgpt_model.parameters())}")
 scgpt_model = DDP(scgpt_model, device_ids=[local_rank], find_unused_parameters=True)
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -217,7 +224,7 @@ scgpt_model = DDP(scgpt_model, device_ids=[local_rank], find_unused_parameters=T
 
 scgpt_model.train()
 
-
+print("Preparing datasets and dataloaders")
 dataset = SCDataset(binned_counts, vocab_gene_ids, batch_indices)
 
 train_size = int(0.9 * len(dataset))
@@ -237,6 +244,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
 num_epochs = args.epochs
 
+print("Start of training")
 for epoch in range(num_epochs):
     train_sampler.set_epoch(epoch)
     is_main = dist.get_rank() == 0
