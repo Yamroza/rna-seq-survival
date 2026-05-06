@@ -28,12 +28,14 @@ def parse_args():
 
     parser.add_argument("--dataset", type=str, default="gene_tpm_v11_bladder_processed.csv",)
     parser.add_argument("--data_path", type=str, default="../data/GTEx/processed/")
+    parser.add_argument("--gene_list_path", type=str, default="../data/hvg_genes_lists/TCGA-BRCA.star_tpm_hvg_3000.json")
     parser.add_argument("--n_hvg", type=int, default=2000)
     parser.add_argument("--n_bins", type=int, default=51)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--mask_ratio", type=float, default=0.15)
+    parser.add_argument("--gene_list", action="store_true", help="Choose genes from file")
 
     return parser.parse_args()
 
@@ -41,7 +43,12 @@ args = parse_args()
 
 # ── WANDB SETUP ───────────────────────────────────────────────────────────
 dataset_name = os.path.splitext(args.dataset)[0]
-run_name = f"{dataset_name}_hvg{args.n_hvg}_bins{args.n_bins}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+if args.gene_list:
+    run_name_gene_input = f"genes_from_list_{os.path.splitext(args.gene_list_path)[0]}"
+else:
+    run_name_gene_input = f"hvg{args.n_hvg}"
+
+run_name = f"{dataset_name}_{run_name_gene_input}_bins{args.n_bins}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 wandb.init(
     project="finetuning-scgpt-on-bulk",
     name=run_name,
@@ -67,8 +74,15 @@ PAD_ID = vocab['<pad>']
 genes_in_vocab = [g for g in adata.var_names if g in vocab]
 adata = adata[:, genes_in_vocab].copy()
 
-sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg)
-adata = adata[:, adata.var['highly_variable']]
+if not args.gene_list:
+    sc.pp.highly_variable_genes(adata, n_top_genes=args.n_hvg)
+    adata = adata[:, adata.var['highly_variable']]
+else:
+    with open(args.gene_list_path, 'r') as f:
+        gene_list = json.load(f)
+    gene_list = [g for g in gene_list if g in adata.var_names]
+    adata = adata[:, gene_list]
+    print(f"Using {len(gene_list)} genes from provided list")
 
 # Tokenize gene names to IDs
 gene_ids = vocab(adata.var_names.tolist())
