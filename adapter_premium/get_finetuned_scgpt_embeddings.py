@@ -100,6 +100,8 @@ def main():
     parser.add_argument("--dataset",    type=str, default='predictionDataset')
     # Debugowanie / Szybkie testy
     parser.add_argument("--subset",     type=int,   default=None, help="Loader size for debbuging")
+    parser.add_argument("--all_genes", action="store_true", help="Ignore genes from gene file, take all")
+
     
     
     config = parser.parse_args()
@@ -119,7 +121,7 @@ def main():
 
     gene_list_path = Path(config.checkpoint_dir)
     gene_list_file = gene_list_path / "gene_set.json"
-    dataset = finetunedSCGPTDataset(df, vocab, gene_list_file)
+    dataset = finetunedSCGPTDataset(df, vocab, gene_list_file, config.all_genes)
     loader = DataLoader(dataset, batch_size=64, collate_fn=collate_fn, shuffle=True,  num_workers=0)
 
     # ---- GET EMB ----
@@ -154,6 +156,11 @@ def main():
     }
 
     # ----- SAVE ------
+#   --checkpoint_dir checkpoints_finetune/merged_all_samples_genes_from_list_star_tpm_hvg_3000_bins51_20260505_201712 \
+    run_name = os.path.basename(config.checkpoint_dir)
+    config.save_path = config.save_path + run_name + '.json'
+    if config.all_genes:
+        config.save_path = config.save_path.replace(".json", "_all_genes.json")
     os.makedirs(os.path.dirname(config.save_path), exist_ok=True)
     with open(config.save_path, 'w', encoding='utf-8') as f:
         for cell_id, emb in results_dict.items():
