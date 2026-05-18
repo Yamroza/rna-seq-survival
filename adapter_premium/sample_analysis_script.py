@@ -1,5 +1,5 @@
 """
-PCA and UMAP visualization comparing multiple bulk RNA-seq datasets.
+PCA and UMAP visualization comparing multiple bulk RNA-seq datasets and embeddings.
 """
 
 import argparse
@@ -58,44 +58,48 @@ DEFAULT_COLORS = [
 def load_dataset(path: str,
                  log2_transform: bool = False,
                  index_col: str = 'case_id') -> pd.DataFrame:
-    """
-    Supports:
-    - CSV: first column = sample ID, rest = features
-    - JSONL: {id, embedding}
-    """
-
     ext = Path(path).suffix.lower()
 
-    # ---------------- CSV ----------------
     if ext == ".csv":
         df = pd.read_csv(path)
-
-        # pierwsza kolumna = ID (nie zawsze nazywa się Unnamed: 0)
         first_col = df.columns[0]
-
-        df = df.rename(columns={first_col: "case_id"})
-
-        # upewnij się, że wszystkie feature kolumny są float
+        
+        # 1. Standaryzacja kolumny ID (nawet jeśli była pusta / "Unnamed: 0")
+        if str(first_col).startswith('emb0'):
+            # Jeśli plik zaczyna się od emb0, oznacza to kompletny brak indeksu
+            print(f"Warning: No explicit index column found in {path}. Generating sequential IDs.")
+            df.insert(0, "case_id", [f"sample_{i}" for i in range(len(df))])
+        else:
+            # Pierwsza kolumna (pusta, Unnamed, lub case_id) staje się oficjalnie "case_id"
+            df = df.rename(columns={first_col: "case_id"})
+            
+        # 2. Pobieramy kolumny z cechami (wszystkie oprócz case_id)
         feature_cols = [c for c in df.columns if c != "case_id"]
-        df[feature_cols] = df[feature_cols].astype(np.float32)
+        
+        # KOREKTA PRZESUNIĘCIA INDEKSÓW (emb1..emb512 -> emb0..emb511)
+        # Sprawdzamy czy pierwsza cecha to 'emb1', a ostatnia to 'emb512'
+        if feature_cols[0] == "emb1" and f"emb{len(feature_cols)}" in feature_cols:
+            print(f"-> Detected 1-based indexing (emb1..emb{len(feature_cols)}) in {path}. Realignment to 0-based indexing applied.")
+            # Mapujemy nazwy tak, aby zaczynały się od emb0
+            new_feature_names = [f"emb{i}" for i in range(len(feature_cols))]
+            rename_dict = dict(zip(feature_cols, new_feature_names))
+            df = df.rename(columns=rename_dict)
+            feature_cols = new_feature_names
 
+        # Rzutowanie na float32
+        df[feature_cols] = df[feature_cols].astype(np.float32)
         return df
 
-    # ---------------- JSONL ----------------
     elif ext == ".json":
         df = pd.read_json(path, lines=True)
-
         df = pd.concat([
             df[['id']].rename(columns={'id': 'case_id'}),
             pd.DataFrame(df['embedding'].tolist())
         ], axis=1)
-
-        # nazwij embeddingi spójnie z CSV (emb0, emb1, ...)
         emb_cols = [c for c in df.columns if c != "case_id"]
+        # JSON zawsze tworzy od emb0 do emb511
         df.columns = ["case_id"] + [f"emb{i}" for i in range(len(emb_cols))]
-
         return df
-
     else:
         raise ValueError(f"Unsupported file extension: {ext}")
 
@@ -109,28 +113,19 @@ def generate_pseudobulk_from_adata(
     donor_col: str = "donor_id",
     tissue_col: str = "tissue_general"
 ) -> pd.DataFrame:
-    """
-    Generuje pseudobulk bezpośrednio z adata przy użyciu DynamicDonorMixer,
-    bez użycia scGPTDataset, słowników czy DataLoaderów.
-    """
     rng = np.random.default_rng(random_seed)
     
-    # 1. Inicjalizacja miksera
-    # Przekazujemy 'adata' jako atrapę datasetu, bo mikser potrzebuje dostępu do .X
     if mixer_type == 'donor_mixer':
         mixer = DynamicDonorMixer(adata, donor_col=donor_col, tissue_col=tissue_col, n_cells=n_cells)
     else:
         mixer = LinearTwoCellMixer()
 
-    # Tworzymy lekki obiekt zastępujący scGPTDataset, który mikser akceptuje
     class SimpleDataset:
         def __init__(self, adata):
             self.X = adata.X
-            self.labels = np.zeros(adata.n_obs) # Atrapa etykiet, mikser ich wymaga w returnie
+            self.labels = np.zeros(adata.n_obs)
 
     dataset_proxy = SimpleDataset(adata)
-    
-    # 2. Losowanie indeksów bazowych dla pseudobulków
     n_samples = min(n_samples, adata.n_obs)
     base_indices = rng.choice(adata.n_obs, size=n_samples, replace=False)
     
@@ -138,27 +133,16 @@ def generate_pseudobulk_from_adata(
     print(f"Generating {n_samples} pseudobulk samples (n_cells={n_cells})...")
     
     for idx in tqdm(base_indices):
-        # Wywołujemy Twój mikser bezpośrednio
-        # Zwraca: mixed_row, labels, lambdas
         mixed_row, _, _ = mixer(idx, dataset_proxy)
-        
-        # Jeśli mixed_row jest rzadką macierzą (sparse), konwertujemy do gęstej tablicy
         if scipy.sparse.issparse(mixed_row):
             mixed_row = mixed_row.toarray().flatten()
-            
         pseudobulks.append(mixed_row)
     
-    # 3. Budowa wynikowego DataFrame
     X_final = np.vstack(pseudobulks)
-    
-    # Używamy nazw genów bezpośrednio z adata.var_names
     gene_names = adata.var['feature_name'].values.astype(str)
     df = pd.DataFrame(X_final, columns=gene_names)
-    
-    # Dodanie kolumny ID
     df.insert(0, 'Unnamed: 0', [f'pseudo_{n_cells}_cell_{i}' for i in range(len(df))])
     
-    # Usunięcie kolumn, które są same zerami (opcjonalne, ale zalecane przed PCA)
     non_zero_cols = df.columns[(df != 0).any(axis=0)]
     df = df[non_zero_cols]
     
@@ -167,7 +151,6 @@ def generate_pseudobulk_from_adata(
 
 
 def match_genes_multi(datasets, index_col="case_id"):
-
     def detect_index_column(df):
         if index_col in df.columns:
             return index_col
@@ -175,22 +158,26 @@ def match_genes_multi(datasets, index_col="case_id"):
             return "case_id"
         if "Unnamed: 0" in df.columns:
             return "Unnamed: 0"
+        
+        # Bezpiecznik: jeśli pierwsza kolumna to cecha embeddingu, nie używaj jej jako ID
+        if str(df.columns[0]).startswith("emb"):
+            raise ValueError(
+                "Critical Mismatch: The script selected the first feature column as a sample ID. "
+                "Ensure your CSV file contains an explicit sample index/ID column at index 0."
+            )
         return df.columns[0]
 
     def clean(col):
         return str(col).split(".")[0].strip()
 
     idx_cols = [detect_index_column(df) for df in datasets]
-
     gene_sets = []
     cleaned_cols_all = []
 
     print("Step 1: Identifying shared features...")
-
     for df, idx in zip(datasets, idx_cols):
         cleaned_cols = []
         genes = set()
-
         for c in df.columns:
             if c == idx:
                 cleaned_cols.append(c)
@@ -198,42 +185,39 @@ def match_genes_multi(datasets, index_col="case_id"):
             cc = clean(c)
             cleaned_cols.append(cc)
             genes.add(cc)
-
         cleaned_cols_all.append(cleaned_cols)
         gene_sets.append(genes)
 
     shared_genes = sorted(set.intersection(*gene_sets)) if gene_sets else []
-
+    all_genes_union = set.union(*gene_sets) if gene_sets else set()
+    not_shared_genes = all_genes_union - set(shared_genes)
+    print(not_shared_genes)
     print(f"  -> Found {len(shared_genes):,} shared features")
 
     if len(shared_genes) == 0:
         raise ValueError("No shared features between datasets")
 
     aligned = []
-
     print("Step 2: Aligning datasets...")
-
     for i, (df, idx) in enumerate(zip(datasets, idx_cols)):
         temp = df.copy()
         temp.columns = cleaned_cols_all[i]
-
         subset = temp.set_index(idx)
         subset = subset.reindex(columns=shared_genes, fill_value=0)
-
         aligned.append(subset.values.astype(np.float32))
 
     return aligned, shared_genes
 
+
 def run_pca(X: np.ndarray, n_components: int = 50) -> tuple[np.ndarray, np.ndarray]:
-    """Fit PCA, return (coords, explained_variance_ratio)."""
-    pca    = PCA(n_components=n_components, random_state=SEED)
+    actual_components = min(n_components, X.shape[0], X.shape[1])
+    pca    = PCA(n_components=actual_components, random_state=SEED)
     coords = pca.fit_transform(X)
     return coords, pca.explained_variance_ratio_
 
 
 def run_umap(X: np.ndarray, n_neighbors: int = 30,
              min_dist: float = 0.3) -> Optional[np.ndarray]:
-    """Fit UMAP, return 2D coords (or None if umap-learn unavailable)."""
     print("Running UMAP...")
     reducer = umap.UMAP(n_components=2, random_state=SEED,
                         n_neighbors=n_neighbors, min_dist=min_dist)
@@ -244,17 +228,10 @@ def run_umap(X: np.ndarray, n_neighbors: int = 30,
 # Plotting
 # ---------------------------------------------------------------------------
 
-def _scatter(ax, x, y, colors, all_labels, groups):
-    color_map = dict(zip(groups, colors))
-    for lbl in groups:
-        idx = [i for i, l in enumerate(all_labels) if l == lbl]
-        ax.scatter(x[idx], y[idx], c=color_map[lbl], s=8, alpha=0.2,
-                   linewidths=0, rasterized=True)
-    ax.spines[['top', 'right']].set_visible(False)
-
-
 def plot_pca_umap(datasets: list[pd.DataFrame],
                   labels: list[str],
+                  loaded_embeddings: Optional[list[np.ndarray]] = None,
+                  embedding_labels: Optional[list[str]] = None,
                   colors: Optional[list[str]] = None,
                   n_pca_components: int = 50,
                   index_col: str = 'Unnamed: 0',
@@ -262,71 +239,80 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
                   umap_n_neighbors: int = 30,
                   umap_min_dist: float = 0.3):
     
-    assert len(datasets) == len(labels), "datasets and labels must have equal length"
     plt.rcParams.update(STYLE)
 
-    # --- LOGIKA GRUPOWANIA ---
-    display_labels = []
-    if GROUP_BY_SOURCE:
-        for lbl in labels:
-            if "TCGA" in lbl: display_labels.append("TCGA")
-            elif "GTEx" in lbl: display_labels.append("GTEx")
-            else: display_labels.append(lbl) # Dla Pseudo zostawia oryginał
-    else:
-        display_labels = labels
+    matrices_to_stack = []
+    all_point_labels = []
 
-    # Unikalne grupy do legendy i mapowania kolorów
+    # 1. Przetwarzanie standardowych zbiorów danych (z dopasowaniem cech/wymiarów)
+    if datasets:
+        display_labels = []
+        for lbl in labels:
+            if GROUP_BY_SOURCE:
+                if "TCGA" in lbl: display_labels.append("TCGA")
+                elif "GTEx" in lbl: display_labels.append("GTEx")
+                else: display_labels.append(lbl)
+            else:
+                display_labels.append(lbl)
+
+        # Dopasowanie genów/cech pomiędzy wszystkimi obiektami DataFrame
+        aligned_matrices, _ = match_genes_multi(datasets, index_col)
+        
+        for lbl, mat in zip(display_labels, aligned_matrices):
+            matrices_to_stack.append(mat)
+            all_point_labels.extend([lbl] * mat.shape[0])
+
+    # 2. Dołączenie surowych macierzy .npy (o ile ich wymiary zgadzają się z dopasowanymi cechami)
+    if loaded_embeddings:
+        display_emb_labels = embedding_labels if embedding_labels else [f"Emb_{i}" for i in range(len(loaded_embeddings))]
+        for lbl, mat in zip(display_emb_labels, loaded_embeddings):
+            # Prosta weryfikacja wymiarowości, jeśli łączymy z obiektami DataFrame
+            if matrices_to_stack and mat.shape[1] != matrices_to_stack[0].shape[1]:
+                print(f"Warning: Dim mismatch! Matrix {lbl} has {mat.shape[1]} features, but DataFrame has {matrices_to_stack[0].shape[1]}. Trying PCA reduction anyway.")
+            matrices_to_stack.append(mat)
+            all_point_labels.extend([lbl] * mat.shape[0])
+
+    # Połączenie wszystkiego w jedną macierz zbiorczą
+    X_all = np.vstack(matrices_to_stack)
+
+    # Budowa unikalnych grup do kolorowania wykresu
     unique_groups = []
-    for dl in display_labels:
+    for dl in all_point_labels:
         if dl not in unique_groups:
             unique_groups.append(dl)
 
     if colors is None:
         colors = DEFAULT_COLORS[:len(unique_groups)]
-    
     color_map = dict(zip(unique_groups, colors))
-    # -------------------------
 
-    # align genes & stack
-    matrices, _ = match_genes_multi(datasets, index_col)
-    X_all       = np.vstack(matrices)
-    
-    # Tworzymy listę labeli dla każdego punktu (używając display_labels)
-    all_point_labels = []
-    for lbl, mat in zip(display_labels, matrices):
-        all_point_labels.extend([lbl] * mat.shape[0])
-    print(f"DEBUG: TCGA points count: {all_point_labels.count('TCGA')}")
-
-    # PCA & UMAP
+    # Obliczenia PCA i UMAP
     print("Running PCA...")
     coords, var_exp = run_pca(X_all, n_components=n_pca_components)
     umap_coords     = run_umap(X_all, n_neighbors=umap_n_neighbors, min_dist=umap_min_dist)
 
-    # layout (3 lub 4 panele)
     n_panels = 4 if umap_coords is not None else 3
-    fig, axes = plt.subplots(1, n_panels, figsize=(3.5 * n_panels, 3.4),
-                             gridspec_kw={'wspace': 0.38})
+    fig, axes = plt.subplots(1, n_panels, figsize=(3.5 * n_panels, 3.4), gridspec_kw={'wspace': 0.38})
 
-    # Funkcja pomocnicza do rysowania z użyciem color_map
     def _grouped_scatter(ax, x, y, title):
         for grp in unique_groups:
-            # Wybieramy indeksy punktów należących do danej grupy
             idx = [i for i, l in enumerate(all_point_labels) if l == grp]
             ax.scatter(x[idx], y[idx], c=color_map[grp], s=8, alpha=0.6,
                        linewidths=0, rasterized=True, label=grp)
         ax.set_title(title, pad=5, loc='left')
         ax.spines[['top', 'right']].set_visible(False)
 
-    # Panele
+    # Panel A: PC1 vs PC2
     _grouped_scatter(axes[0], coords[:, 0], coords[:, 1], '(A)\u2002PCA — PC1 vs PC2')
     axes[0].set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)')
     axes[0].set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)')
 
-    _grouped_scatter(axes[1], coords[:, 0], coords[:, 2], '(B)\u2002PCA — PC1 vs PC3')
+    # Panel B: PC1 vs PC3 (lub PC2 jeśli brakuje wymiarów)
+    y_dim = 2 if len(var_exp) > 2 else 1
+    _grouped_scatter(axes[1], coords[:, 0], coords[:, y_dim], f'(B)\u2002PCA — PC1 vs PC{y_dim+1}')
     axes[1].set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)')
-    axes[1].set_ylabel(f'PC3 ({var_exp[2]*100:.1f}%)')
+    axes[1].set_ylabel(f'PC{y_dim+1} ({var_exp[y_dim]*100:.1f}%)')
 
-    # C: Scree plot (bez zmian)
+    # Panel C: Scree plot
     ax = axes[2]
     cumvar = np.cumsum(var_exp) * 100
     ax.plot(range(1, len(cumvar) + 1), cumvar, color='#333333', lw=1.5)
@@ -336,13 +322,13 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
     ax.set_ylim(0, 101)
     ax.spines[['top', 'right']].set_visible(False)
 
-    # D: UMAP
+    # Panel D: UMAP
     if umap_coords is not None:
         _grouped_scatter(axes[3], umap_coords[:, 0], umap_coords[:, 1], '(D)\u2002UMAP')
         axes[3].set_xlabel('UMAP 1')
         axes[3].set_ylabel('UMAP 2')
 
-    # Legend (tylko unikalne grupy)
+    # Legenda
     legend_handles = [
         Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[grp],
                markersize=6, label=grp)
@@ -352,44 +338,36 @@ def plot_pca_umap(datasets: list[pd.DataFrame],
                bbox_to_anchor=(0.5, -0.2), frameon=True,
                handletextpad=0.4, columnspacing=1.5, borderpad=0.6, fontsize=9)
 
-    # save
     outdir = Path('sample_analysis_plots')
     outdir.mkdir(exist_ok=True)
 
-    save_metadata(
-        save_prefix,
-        labels,
-        outdir=outdir,
-    )
+    # Generowanie czytelnych nazw do metadanych
+    all_combined_labels = labels + (embedding_labels if embedding_labels else [])
+    save_metadata(save_prefix, all_combined_labels, outdir=outdir)
 
     for ext in ('pdf', 'png'):
         path = outdir / f'{ext}/{save_prefix}_pca_umap.{ext}'
+        path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(path, bbox_inches='tight')
         print(f'Saved: {path}')
 
-    # pairwise centroid distances (PC1-10)
-    print("\nPairwise centroid L2 distances (PC1-10):")
-    
-    # Używamy unique_groups, aby liczyć dystanse między tym co w legendzie
-    # i all_point_labels, która jest teraz poprawnie zdefiniowana wewnątrz funkcji
+    print("\nPairwise centroid L2 distances (PC1-min(10, n_pcs)):")
+    n_dim = min(10, coords.shape[1])
     centroids = {
-        grp: coords[[i for i, l in enumerate(all_point_labels) if l == grp], :10].mean(0)
+        grp: coords[[i for i, l in enumerate(all_point_labels) if l == grp], :n_dim].mean(0)
         for grp in unique_groups
     }
-    
     for i, a in enumerate(unique_groups):
         for b in unique_groups[i+1:]:
             dist = np.linalg.norm(centroids[a] - centroids[b])
             print(f"  {a} vs {b}: {dist:.3f}")
 
+
 def build_save_prefix(labels: list[str], extra_tag: str = '', n_samples: int = 0, mixer: str = 'donor_mixer'):
-    """
-    Auto filename describing datasets.
-    """
     short_labels = []
     for lbl in labels:
         cleaned = (
-            lbl.replace('TCGA-', '')
+            str(lbl).replace('TCGA-', '')
                .replace('gene_tpm_v11_', '')
                .replace('processed', 'proc')
                .replace('kidney_cortex', 'kidney')
@@ -397,6 +375,8 @@ def build_save_prefix(labels: list[str], extra_tag: str = '', n_samples: int = 0
         )
         short_labels.append(cleaned)
     joined = '__'.join(short_labels)
+    if len(joined) > 120:  # Zabezpieczenie przed za długą nazwą pliku w systemie operacyjnym
+        joined = joined[:110] + "_truncated"
     if extra_tag and n_samples > 0:
         return f'{extra_tag}_{joined}_{mixer}_n_samples_{n_samples}'
     elif extra_tag:
@@ -407,79 +387,31 @@ def build_save_prefix(labels: list[str], extra_tag: str = '', n_samples: int = 0
 def save_metadata(save_prefix, labels, outdir='sample_analysis_plots'):
     Path(outdir).mkdir(exist_ok=True)
     meta_path = Path(outdir) / f'metadata/{save_prefix}_metadata.txt'
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
     with open(meta_path, 'w') as f:
         f.write('Datasets used:\n')
         for lbl in labels:
             f.write(f' - {lbl}\n')
-        # f.write(f'\nShared genes: {shared_genes_count}\n')
     print(f'Saved metadata: {meta_path}')
 
-# ---------------------------------------------------------------------------
-# Usage
-# ---------------------------------------------------------------------------
-def print_dataset_stats(
-    datasets: list[pd.DataFrame],
-    labels: list[str],
-    index_col: str = 'Unnamed: 0'
-):
-    """
-    Basic per-dataset statistics for RNA-seq matrices.
-    """
-
-    print("\n" + "=" * 80)
-    print("DATASET STATISTICS")
-    print("=" * 80)
-
-    for df, label in zip(datasets, labels):
-
-        gene_cols = [c for c in df.columns if c != index_col]
-
-        X = df[gene_cols].values.astype(np.float32)
-
-        # per-sample stats
-        sample_sums = X.sum(axis=1)
-        sample_means = X.mean(axis=1)
-        sample_nonzero = (X > 0).sum(axis=1)
-
-        # global stats
-        zero_fraction = (X == 0).mean()
-
-        print(f"\nDataset: {label}")
-        print("-" * 60)
-        print(f"Shape:                  {X.shape}")
-        print(f"N samples:              {X.shape[0]:,}")
-        print(f"N genes:                {X.shape[1]:,}")
-
-        print("\nPer-sample statistics:")
-        print(f"  Mean total expression: {sample_sums.mean():.2f}")
-        print(f"  Median total expr:     {np.median(sample_sums):.2f}")
-        print(f"  Std total expr:        {sample_sums.std():.2f}")
-        print(f"  Min total expr:        {sample_sums.min():.2f}")
-        print(f"  Max total expr:        {sample_sums.max():.2f}")
-
-        print(f"\n  Mean gene expr/sample: {sample_means.mean():.4f}")
-        print(f"  Mean nonzero genes:    {sample_nonzero.mean():.1f}")
-        print(f"  Median nonzero genes:  {np.median(sample_nonzero):.1f}")
-
-        print("\nMatrix sparsity:")
-        print(f"  Zero fraction:         {zero_fraction:.4f}")
-        print(f"  Nonzero fraction:      {1-zero_fraction:.4f}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="sample analysis")
 
-    parser.add_argument("--tcga", type=str, nargs='*', default=[], help="List of TCGA project codes")
-    parser.add_argument("--gtex", type=str, nargs='*', default=[], help="List of GTEx tissue names")
-    parser.add_argument("--other", type=str, nargs='*', default=[], help="List of other dataset names")
-    parser.add_argument("--other_dir", type=str, help="Directory of other files")
-    parser.add_argument("--n_samples", type=int, default=0, help="For pseudobulk")
-    parser.add_argument("--n_cells", type=int, nargs='+', default=[2], help="For pseudobulk")
-    parser.add_argument("--group_by_source", action="store_true", help="Group labels as TCGA/GTEx") 
+    parser.add_argument("--tcga", type=str, nargs='*', default=[])
+    parser.add_argument("--gtex", type=str, nargs='*', default=[])
+    parser.add_argument("--other", type=str, nargs='*', default=[])
+    parser.add_argument("--other_dir", type=str)
+    parser.add_argument("--n_samples", type=int, default=0)
+    parser.add_argument("--n_cells", type=int, nargs='+', default=[2])
+    parser.add_argument("--group_by_source", action="store_true") 
     parser.add_argument("--mixer_type", type=str, default='donor_mixer')
+    
+    parser.add_argument("--embeddings", type=str, nargs='*', default=[])
+    parser.add_argument("--embedding_labels", type=str, nargs='*', default=[])
 
     args = parser.parse_args()
 
-    # Config
     GROUP_BY_SOURCE = args.group_by_source
     SELECT_TCGA = args.tcga
     SELECT_GTEX = args.gtex
@@ -490,65 +422,66 @@ if __name__ == '__main__':
     ADATA_DIR = 'data_new/blkb_common_train.h5ad'
 
     PSEUDO_CONFIG = {
-        'n_samples': args.n_samples,  # set to 0 if you don't want any pseudobulks
-        'n_cells_list': args.n_cells, # Tutaj podajesz dowolną liczbę wariantów
+        'n_samples': args.n_samples,
+        'n_cells_list': args.n_cells,
         'adata_path': ADATA_DIR,
     }
 
-    # Run
     datasets = []
     labels = []
+    loaded_embeddings = []
+    embedding_labels = []
 
-    # 0. Load other
+    # 0. Ładowanie innych plików tekstowych (CSV/JSON) -> ZAWSZE URUCHAMIANE
     for dataset in args.other:
         print(f"Loading other dataset: {dataset}")
-        datasets.append(load_dataset(f'{args.other_dir}/{dataset}', log2_transform=False))
+        full_path = f'{args.other_dir}/{dataset}' if args.other_dir else dataset
+        datasets.append(load_dataset(full_path, log2_transform=False))
         labels.append(dataset)
 
-    # 1. Load TCGA
+    # 1. Ładowanie TCGA
     for cohort in SELECT_TCGA:
         print(f"Loading TCGA: {cohort}")
         datasets.append(load_dataset(f'{DATA_DIR}/{cohort}.star_tpm.csv', log2_transform=False))
         labels.append(cohort)
 
-    # 2. Load GTEx
+    # 2. Ładowanie GTEx
     for tissue in SELECT_GTEX:
         print(f"Loading GTEx: {tissue}")
         if LOAD_GTEX_VARIANTS['processed']:
             datasets.append(load_dataset(f'{GTEX_DIR}/gene_tpm_v11_{tissue}_processed.csv', log2_transform=False))
             labels.append(f"GTEx_{tissue}")
-        if LOAD_GTEX_VARIANTS['div_1.5']:
-            datasets.append(load_dataset(f'{GTEX_DIR}/gene_tpm_v11_{tissue}_processed_div_1,5.csv', log2_transform=False))
-            labels.append(f"GTEx_{tissue}_div_1.5")
-        if LOAD_GTEX_VARIANTS['nn']:
-            datasets.append(load_dataset(f'{GTEX_DIR}/gene_tpm_v11_{tissue}_nn.csv', log2_transform=False))
-            labels.append(f"GTEx_{tissue}_nn")
 
-    # 3. Generate pesudo bulks for each n_cell value
+    # 3. Generowanie dynamicznych pseudo-bulków
     if PSEUDO_CONFIG['n_samples'] > 0 and PSEUDO_CONFIG['n_cells_list']:
         adata = ad.read_h5ad(PSEUDO_CONFIG['adata_path'])
-
         for n_c in PSEUDO_CONFIG['n_cells_list']:
             print(f"\n>>> Generating PseudoBulk: n_cells={n_c}")
             pseudo_df = generate_pseudobulk_from_adata(
-                adata=adata,
-                n_samples=PSEUDO_CONFIG['n_samples'],
-                n_cells=n_c,
-                mixer_type=args.mixer_type
+                adata=adata, n_samples=PSEUDO_CONFIG['n_samples'], n_cells=n_c, mixer_type=args.mixer_type
             )
             datasets.append(pseudo_df)
             labels.append(f"Pseudo_{n_c}cells")
 
-    # 4. Plots
-    if datasets:
-        # print_dataset_stats(datasets, labels)
-        print('Finished')
-        save_prefix = build_save_prefix(labels, extra_tag=f'grouped_{GROUP_BY_SOURCE}', n_samples=args.n_samples, mixer=args.mixer_type)
-        print('Finished 2')
+    # 4. Ładowanie surowych embeddingów .npy (Jeśli obecne, zostaną połączone w osi próbek z powyższymi)
+    if args.embeddings:
+        for path_str, label in zip(args.embeddings, args.embedding_labels if args.embedding_labels else args.embeddings):
+            print(f"Loading embedding array: {path_str}")
+            emb_matrix = np.load(path_str)
+            print(f"  -> Loaded shape: {emb_matrix.shape}")
+            loaded_embeddings.append(emb_matrix)
+            embedding_labels.append(label)
+
+    # Wywołanie rysowania jeśli cokolwiek zostało poprawnie wczytane
+    if datasets or loaded_embeddings:
+        print('Processing and structural analysis...')
+        all_combined_labels = labels + (embedding_labels if embedding_labels else [])
+        save_prefix = build_save_prefix(all_combined_labels, extra_tag=f'grouped_{GROUP_BY_SOURCE}', n_samples=args.n_samples, mixer=args.mixer_type)
         
-        print(f"\nFinal datasets in plot: {labels}")
         plot_pca_umap(
             datasets=datasets,
             labels=labels,
+            loaded_embeddings=loaded_embeddings,
+            embedding_labels=embedding_labels,
             save_prefix=save_prefix,
         )
