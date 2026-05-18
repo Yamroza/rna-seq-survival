@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpua6000
-#SBATCH --job-name=finetune_scgpt_12000
+#SBATCH --job-name=get_embeddings
 
 #SBATCH --time=9-12:00:00
 #SBATCH --gres=gpu:1
@@ -13,7 +13,8 @@ conda activate scgpt
 echo "Using python from: $(which python)"
 
 python get_finetuned_scgpt_embeddings.py \
-  --checkpoint_dir checkpoints_finetune/merged_all_samples_genes_from_list_../data/hvg_genes_lists/TCGA-BRCA.star_tpm_hvg_3000_bins51_20260505_201712 \
-  --model_name scgpt_epoch_25 \
-  --save_path ../data/0_data_for_mlp_finetuned_scgpt/ \
-  --all_genes
+  --checkpoint_dir checkpoints_finetune/merged_all_samples_hvg2000_bins51_20260505_100001 \
+  --model_name scgpt_epoch_30 \
+  --save_path ../data/0_data_for_mlp_finetuned_scgpt/ 
+  # \
+  # --all_genes
