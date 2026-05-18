@@ -131,7 +131,6 @@ def main():
     print(f"Generating embeddings...")
     with torch.no_grad():
         for src, values, mask, ids, _ in tqdm(loader):
-            print(type(ids), len(ids))
             src, values, mask = src.to(device), values.to(device), mask.to(device)
             output = scgpt_model(
                 src=src,
