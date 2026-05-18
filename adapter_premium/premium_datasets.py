@@ -134,9 +134,10 @@ def collate_fn(batch):
 
 
 class finetunedSCGPTDataset(Dataset):
-    def __init__(self, data, vocab, gene_list_file):
+    def __init__(self, data, vocab, gene_list_file, all_genes=False):
         self.data = data.copy()
         self.data = self.data.rename(columns={self.data.columns[0]: 'id'})
+
 
         # ── LOAD GENE LIST ───────────────────────────────────────────────
         with open(gene_list_file, "r") as f:
@@ -144,6 +145,9 @@ class finetunedSCGPTDataset(Dataset):
 
         self.gene_list = gene_info["genes"]
         self.n_bins = gene_info["n_bins"]
+
+        if all_genes:
+            self.gene_list = self.data.columns[1:]
 
         # ── FILTER GENES (NA STRINGACH!) ─────────────────────────────────
         valid_genes = [
