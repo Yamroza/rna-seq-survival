@@ -6,16 +6,16 @@ conda activate myenv
 echo "Using python from:"
 which python
 
-EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp"
+EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp_finetuned_scgpt"
 # EXPR_PATH="/scratch/2370352/my-research/adapter_premium/embeddings"
-DATA_TYPE='csv'
+DATA_TYPE='json'
 
 # Zmienne bazowe dla ścieżek
 CLINICAL_BASE_DIR="/scratch/2370352/my-research/data/clinical_data"
 
 # mlp snn pathway_mlp pathway_snn gene_dimaf
 MODEL="mlp"
-EXP_CODE="small_cohorts"
+EXP_CODE="finetuned_scgpt"
 
 for file in "$EXPR_PATH"/*; do
     omics_type=$(basename "$file")
