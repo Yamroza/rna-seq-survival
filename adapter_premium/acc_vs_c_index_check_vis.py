@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 import re
 import argparse
+import glob
 
 def extract_epoch_number(folder_name):
     match = re.search(r'epoch_(\d+)', folder_name)
@@ -28,8 +29,16 @@ def main():
     for folder in folder_names:
         epoch_num = extract_epoch_number(folder)
         
-        # 1. Ścieżka do JSON
-        json_path = os.path.join(args.results_dir, folder, "Final_results_TCGA-BRCA.star_tpm.json.json")
+       # 1. Znajdź plik zaczynający się od "Final_results"
+        json_candidates = glob.glob(
+            os.path.join(args.results_dir, folder, "Final_results*.json")
+        )
+
+        if not json_candidates:
+            print(f"No Final_results JSON found in {folder}")
+            continue
+
+        json_path = json_candidates[0]
         
         # 2. Ścieżka do Checkpointu - musi pasować do: {base_name}_{epoch}.pt
         ckpt_name = f"{args.ckpt_base_name}_{epoch_num}.pt"
@@ -39,15 +48,15 @@ def main():
             try:
                 # Ładowanie Accuracy
                 ckpt = torch.load(checkpoint_path, map_location='cpu')
-                val_acc = ckpt.get('val_acc')
-                
+                val_acc = ckpt.get('loss')
+
                 # Ładowanie Survival
                 with open(json_path, 'r') as f:
                     data = json.load(f)
                 
                 if val_acc is not None:
                     epochs.append(epoch_num)
-                    acc_values.append(val_acc)
+                    acc_values.append(val_acc/1000)
                     c_index_avg.append(data["Summary"]["c_index"]["avg"])
                     c_index_ipcw_avg.append(data["Summary"]["c_index_ipcw"]["avg"])
             except Exception as e:
@@ -76,7 +85,7 @@ def main():
              linestyle='--', linewidth=2.5, label='Survival C-Index IPCW (Avg)')
     
     plt.plot(epochs, acc_values, color=colors[2], marker='D', markersize=8, 
-             linewidth=2.5, label='Cell-Type classification Acc')
+             linewidth=2.5, label='input mae')
 
     # Tytuł i etykiety
     plt.title('Performance Comparison: Survival Prediction vs. Cell-Type Classification', 
