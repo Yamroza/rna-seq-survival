@@ -55,14 +55,49 @@ DEFAULT_COLORS = [
 # Core functions
 # ---------------------------------------------------------------------------
 
-def load_dataset(path: str, log2_transform: bool = False,
-                 index_col: str = 'Unnamed: 0') -> pd.DataFrame:
-    """Load CSV and optionally apply log2(x+1) to gene columns."""
-    df = pd.read_csv(path)
-    if log2_transform:
-        gene_cols = [c for c in df.columns if c != index_col]
-        df[gene_cols] = np.log2(df[gene_cols].astype(float) + 1)
-    return df
+def load_dataset(path: str,
+                 log2_transform: bool = False,
+                 index_col: str = 'case_id') -> pd.DataFrame:
+    """
+    Supports:
+    - CSV: first column = sample ID, rest = features
+    - JSONL: {id, embedding}
+    """
+
+    ext = Path(path).suffix.lower()
+
+    # ---------------- CSV ----------------
+    if ext == ".csv":
+        df = pd.read_csv(path)
+
+        # pierwsza kolumna = ID (nie zawsze nazywa się Unnamed: 0)
+        first_col = df.columns[0]
+
+        df = df.rename(columns={first_col: "case_id"})
+
+        # upewnij się, że wszystkie feature kolumny są float
+        feature_cols = [c for c in df.columns if c != "case_id"]
+        df[feature_cols] = df[feature_cols].astype(np.float32)
+
+        return df
+
+    # ---------------- JSONL ----------------
+    elif ext == ".json":
+        df = pd.read_json(path, lines=True)
+
+        df = pd.concat([
+            df[['id']].rename(columns={'id': 'case_id'}),
+            pd.DataFrame(df['embedding'].tolist())
+        ], axis=1)
+
+        # nazwij embeddingi spójnie z CSV (emb0, emb1, ...)
+        emb_cols = [c for c in df.columns if c != "case_id"]
+        df.columns = ["case_id"] + [f"emb{i}" for i in range(len(emb_cols))]
+
+        return df
+
+    else:
+        raise ValueError(f"Unsupported file extension: {ext}")
 
 
 def generate_pseudobulk_from_adata(
@@ -131,76 +166,63 @@ def generate_pseudobulk_from_adata(
     return df
 
 
-def match_genes_multi(
-    datasets: list[pd.DataFrame],
-    index_col: str = 'Unnamed: 0',
-):
-    """
-    1. Znajduje wspólne geny (intersection).
-    2. Sortuje je alfabetycznie.
-    3. Wyciąga dane, identyfikuje i agreguje duplikaty.
-    """
-    def clean_gene_name(name):
-        return str(name).split('.')[0].strip()
+def match_genes_multi(datasets, index_col="case_id"):
 
-    # --- KROK 1: Ujednolicenie nazw i znalezienie części wspólnej ---
+    def detect_index_column(df):
+        if index_col in df.columns:
+            return index_col
+        if "case_id" in df.columns:
+            return "case_id"
+        if "Unnamed: 0" in df.columns:
+            return "Unnamed: 0"
+        return df.columns[0]
+
+    def clean(col):
+        return str(col).split(".")[0].strip()
+
+    idx_cols = [detect_index_column(df) for df in datasets]
+
     gene_sets = []
-    cleaned_column_names = [] # Przechowujemy listy oczyszczonych nazw dla każdego datasetu
+    cleaned_cols_all = []
 
-    print("Step 1: Identifying shared genes...")
-    for df in datasets:
-        # Czyścimy nazwy kolumn (bez modyfikowania jeszcze oryginalnego DF)
-        curr_cleaned = [clean_gene_name(c) if c != index_col else c for c in df.columns]
-        cleaned_column_names.append(curr_cleaned)
-        
-        # Zbiór genów do części wspólnej (bez kolumny indeksu)
-        genes_only = set(c for c in curr_cleaned if c != index_col)
-        gene_sets.append(genes_only)
+    print("Step 1: Identifying shared features...")
 
-    # Intersection + Sortowanie alfabetyczne
-    shared_genes = sorted(list(set.intersection(*gene_sets)))
-    print(f"  -> Found {len(shared_genes):,} shared genes (alphabetically sorted).")
+    for df, idx in zip(datasets, idx_cols):
+        cleaned_cols = []
+        genes = set()
 
-    # --- KROK 2: Wyciąganie danych i obsługa duplikatów ---
-    aligned_matrices = []
-    
-    print("Step 2: Processing datasets and handling duplicates...")
-    for i, df in enumerate(datasets):
-        # Tymczasowo podmieniamy nazwy kolumn na oczyszczone
-        temp_df = df.copy()
-        temp_df.columns = cleaned_column_names[i]
-        
-        # Wybieramy tylko wspólne geny. 
-        # Jeśli są duplikaty, temp_df[shared_genes] zwróci więcej kolumn niż len(shared_genes)
-        subset_df = temp_df[[index_col] + shared_genes]
-        
-        # Sprawdzamy duplikaty wśród wybranych genów
-        duplicated_mask = subset_df.columns.duplicated(keep=False)
-        if duplicated_mask.any():
-            # Wyciągamy nazwy duplikowanych genów
-            all_cols = subset_df.columns[duplicated_mask]
-            dups = sorted(list(set(all_cols) - {index_col}))
-            
-            print(f"  Warning: Dataset index {i} has {len(dups)} shared genes that are duplicated:")
-            print(f"  Duplicated genes: {', '.join(dups[:20])}{'...' if len(dups) > 20 else ''}")
-            
-            # Agregacja duplikatów (średnia)
-            subset_df = subset_df.set_index(index_col)
-            # Groupby po nazwie kolumny (level=0) i osi kolumn (axis=1)
-            subset_df = subset_df.groupby(axis=1, level=0).mean()
-            subset_df = subset_df.reset_index()
-        
-        # --- KROK 3: Finalne wyrównanie i konwersja do macierzy ---
-        # Reindex zapewnia, że kolumny są w identycznej kolejności alfabetycznej
-        X = subset_df.set_index(index_col).reindex(columns=shared_genes).values.astype(np.float32)
-        
-        if X.shape[1] != len(shared_genes):
-            raise ValueError(f"Consistency error in dataset {i}: {X.shape[1]} vs {len(shared_genes)}")
-            
-        aligned_matrices.append(X)
-        
-    return aligned_matrices, shared_genes
+        for c in df.columns:
+            if c == idx:
+                cleaned_cols.append(c)
+                continue
+            cc = clean(c)
+            cleaned_cols.append(cc)
+            genes.add(cc)
 
+        cleaned_cols_all.append(cleaned_cols)
+        gene_sets.append(genes)
+
+    shared_genes = sorted(set.intersection(*gene_sets)) if gene_sets else []
+
+    print(f"  -> Found {len(shared_genes):,} shared features")
+
+    if len(shared_genes) == 0:
+        raise ValueError("No shared features between datasets")
+
+    aligned = []
+
+    print("Step 2: Aligning datasets...")
+
+    for i, (df, idx) in enumerate(zip(datasets, idx_cols)):
+        temp = df.copy()
+        temp.columns = cleaned_cols_all[i]
+
+        subset = temp.set_index(idx)
+        subset = subset.reindex(columns=shared_genes, fill_value=0)
+
+        aligned.append(subset.values.astype(np.float32))
+
+    return aligned, shared_genes
 
 def run_pca(X: np.ndarray, n_components: int = 50) -> tuple[np.ndarray, np.ndarray]:
     """Fit PCA, return (coords, explained_variance_ratio)."""
@@ -443,12 +465,13 @@ def print_dataset_stats(
         print(f"  Zero fraction:         {zero_fraction:.4f}")
         print(f"  Nonzero fraction:      {1-zero_fraction:.4f}")
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="sample analysis")
 
     parser.add_argument("--tcga", type=str, nargs='*', default=[], help="List of TCGA project codes")
     parser.add_argument("--gtex", type=str, nargs='*', default=[], help="List of GTEx tissue names")
+    parser.add_argument("--other", type=str, nargs='*', default=[], help="List of other dataset names")
+    parser.add_argument("--other_dir", type=str, help="Directory of other files")
     parser.add_argument("--n_samples", type=int, default=0, help="For pseudobulk")
     parser.add_argument("--n_cells", type=int, nargs='+', default=[2], help="For pseudobulk")
     parser.add_argument("--group_by_source", action="store_true", help="Group labels as TCGA/GTEx") 
@@ -475,6 +498,12 @@ if __name__ == '__main__':
     # Run
     datasets = []
     labels = []
+
+    # 0. Load other
+    for dataset in args.other:
+        print(f"Loading other dataset: {dataset}")
+        datasets.append(load_dataset(f'{args.other_dir}/{dataset}', log2_transform=False))
+        labels.append(dataset)
 
     # 1. Load TCGA
     for cohort in SELECT_TCGA:
