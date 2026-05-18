@@ -20,7 +20,7 @@ DATA_PATH=${DATA_PATH:-"data_new/train.h5ad"}
 SEQ_LENGTH=${SEQ_LENGTH:-2000}
 HIDDEN=${HIDDEN:-"512 256"}
 DATASET=${DATASET:-"bulkDataset"}
-EXP_CODE=${EXP_CODE:-"adapter_premium_donor"}
+EXP_CODE=${EXP_CODE:-"finetuned"}
 
 DATA_FILENAME=$(basename "$DATA_PATH")
 DATA_FILENAME="${DATA_FILENAME%.*}"
@@ -53,12 +53,12 @@ do
     # Dodajemy numer epoki do folderu zapisu, żeby embeddingi się nie nadpisywały
     EMB_SAVE_DIR="embeddings/finetuned/${SAVE_CONFIG}/epoch_${i}/"
 
-    # echo "Generating embeddings ..."
-    # conda activate scgpt # Upewnij się, że jesteś w dobrym env
-    # python get_finetuned_scgpt_embeddings.py \
-    #     --checkpoint_dir "$CHECKPOINT_BASE_DIR" \
-    #     --model_name "$MODEL_NAME" \
-    #     --save_path "$EMB_SAVE_DIR"
+    echo "Generating embeddings ..."
+    conda activate scgpt # Upewnij się, że jesteś w dobrym env
+    python get_finetuned_scgpt_embeddings.py \
+        --checkpoint_dir "$CHECKPOINT_BASE_DIR" \
+        --model_name "$MODEL_NAME" \
+        --save_path "$EMB_SAVE_DIR"
 
     # Pobierz nazwę pliku json z folderu embeddingów
     OMICS_TYPE=$(find "$EMB_SAVE_DIR" -maxdepth 1 -name "*.json" -exec basename {} \; | head -n 1)
@@ -115,10 +115,11 @@ echo "====================================================="
 echo "GENERATING FINAL PLOT"
 echo "====================================================="
 
+TASK="dss_survival_brca"
 # Ścieżka do wyników (tam gdzie są foldery epoch_1, epoch_2...)
-RESULTS_BASE_DIR="results/finetuned/${EXP_CODE}/${SAVE_CONFIG}"
-
-python acc_vs_c_index_check_vis.py --results_dir "$RESULTS_BASE_DIR"
+RESULTS_BASE_DIR="results/${TASK}/${EXP_CODE}/${SAVE_CONFIG}"
+CKPT_BASE_NAME="scgpt_epoch"
+python acc_vs_c_index_check_vis.py --results_dir "$RESULTS_BASE_DIR" --checkpoints_dir "$CHECKPOINT_BASE_DIR" --ckpt_base_name "$CKPT_BASE_NAME"
 
 
 echo "====================================================="
