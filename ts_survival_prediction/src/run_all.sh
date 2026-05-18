@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpua6000
+#SBATCH --job-name=survival_pred
 source /scratch/2370352/conda/etc/profile.d/conda.sh
 conda activate myenv
 
