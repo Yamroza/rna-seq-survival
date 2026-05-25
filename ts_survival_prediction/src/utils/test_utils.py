@@ -1,5 +1,5 @@
-from sksurv.metrics import concordance_index_censored, concordance_index_ipcw
-from sksurv.util import Surv
+from metrics.metrics import concordance_index_censored, concordance_index_ipcw
+from metrics.util import Surv
 
 def compute_survival_metrics(all_censorships, all_event_times, all_risk_scores, survival_info_train):
     """ Compute the concordance index and the IPCW concordance index. """

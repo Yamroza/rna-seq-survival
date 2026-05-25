@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 
 class RNASurvivalDataset(Dataset):
     """
-        RNA-seq Dataset for survival prediction
+        RNA-seq Dataset for survival prediction (Dual Mode: standard scaling vs scGPT binning)
     """
     def __init__(self,
                  args, 
@@ -42,10 +42,16 @@ class RNASurvivalDataset(Dataset):
         self.type = type
         self.scaler = None
         self.expression_data_path = args.expression_data_path
+        
+        # Zapamiętujemy model, aby kontrolować logikę skalowania
+        self.model_type = getattr(args, 'model', 'mlp')
 
         # Label args
         self.survival_time_col = args.target_col
         self.censorship_col = args.target_col.split('_')[0] + '_censorship'
+
+        # Atrybut przechowujący nazwy genów (potrzebny dla scGPT)
+        self.genes = []
 
         # Setup and check clinical data
         self.init_df()
@@ -86,7 +92,6 @@ class RNASurvivalDataset(Dataset):
 
     def check_rna_files(self):
         """ Check that the rna files have no duplicates. """
-        # For RNA we have a sample per person.
         assert not self.df_rna['case_id'].duplicated().any(), "There are duplicates in the rna data!"
 
     def init_df(self):
@@ -101,7 +106,7 @@ class RNASurvivalDataset(Dataset):
         self.feat_dir_rna = os.path.join(self.expression_data_path, f"{self.omics_type}")
         if os.path.isfile(self.feat_dir_rna):
             if self.data_type == 'csv':
-                self.df_rna = pd.read_csv(self.feat_dir_rna, engine='python')#, index_col=0)
+                self.df_rna = pd.read_csv(self.feat_dir_rna, engine='python')
                 self.df_rna = self.df_rna.rename(columns={'Unnamed: 0': 'case_id'})
             elif self.data_type == 'json':
                 df_raw = pd.read_json(self.feat_dir_rna, lines=True)
@@ -121,15 +126,25 @@ class RNASurvivalDataset(Dataset):
 
         self.data_df = self.data_df[self.data_df['case_id'].isin(sample_list)].reset_index(drop=True)
         self.df_rna = self.df_rna[self.df_rna['case_id'].isin(sample_list)].reset_index(drop=True)
+        
+        # Wyciągamy nazwy genów dla scGPT (przed modyfikacją indeksu DataFrame)
+        self.genes = [col for col in self.df_rna.columns if col != 'case_id']
+        
         self.df_rna = self.df_rna.set_index('case_id')
 
-        # Set up hallmark pathways is necessary
+        # Set up hallmark pathways if necessary
         if self.type == "pathways":
             self.setup_rna_pathways()
 
-        # Initialize and apply scaler for RNA data
-        self.setup_scaler()
-        self.apply_scaler()
+        # --- KLUCZOWY WARUNEK DLA KOMPATYBILNOŚCI ---
+        # Jeśli odpalamy scGPT, pomijamy standardowy scaler, ponieważ scGPT wymaga 
+        # wartości dodatnich i sam wykona binning na GPU.
+        if self.model_type == 'scgpt':
+            print(f"[{self.mode.upper()}] Model is 'scgpt'. Skipping StandardScaler to preserve raw expression for binning.")
+        else:
+            # Dla MLP, SNN, DIMAF odpalamy standardowy pipeline ze scalerem
+            self.setup_scaler()
+            self.apply_scaler()
     
     def setup_scaler(self):
         """ Fit or load scaler for RNA data. """
@@ -194,7 +209,7 @@ class RNASurvivalDataset(Dataset):
         return np.array(cs_list), np.array(st_list)
     
     def get_labels(self, idx):
-        """ Get the survival time (days), censorship and target label (either continuous or discrete time labels). """
+        """ Get the survival time (days), censorship and target label. """
         labels = self.data_df.loc[idx][[self.survival_time_col, self.censorship_col, self.survival_time_col]]
         return list(labels)
     
@@ -207,33 +222,18 @@ class RNASurvivalDataset(Dataset):
         
         # Obtain patient id
         case_id = self.data_df.loc[idx]['case_id']
-        # slide_id = self.data_df.loc[idx]['slide_id']
         out['case_id'] = case_id
-        # out['slide_id'] = slide_id
 
         # Obtain RNA data
         if self.type == 'pathways':
             pathway_summary = []
-            # For each pathway:
             for i in range(len(self.pathway_names)):
-                # Store all expression data of genes in this pathway of this patient
-                pathway_summary.append(torch.Tensor(self.df_rna.loc[case_id][self.rna_names[i]]))
-            
+                # Zwróci zescalowane lub surowe dane w zależności od tego, jaki model wybrano w init
+                pathway_summary.append(torch.Tensor(self.df_rna.loc[case_id][self.rna_names[i]].values))
             out['rna'] = pathway_summary
         else:
-            # Obtain all gene expression data of this patient
+            # Zwróci zescalowane lub surowe dane w zależności od tego, jaki model wybrano w init
             rna_data = torch.Tensor(self.df_rna.loc[case_id].values)
             out['rna'] = rna_data
 
         return out
-
-
-    
-
-
-
-        
-
-
-
-

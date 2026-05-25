@@ -4,7 +4,7 @@ import numpy as np
 import wandb
 
 from torch.utils.tensorboard import SummaryWriter
-from sksurv.metrics import concordance_index_censored
+from metrics.metrics import concordance_index_censored
 
 from survival.losses import CoxLoss
 from model.model_factory import obtain_model
@@ -33,6 +33,12 @@ def survival_train(args, fold, device):
     print('\nObtaining dataloaders...', end='\n')
     train_dl, rna_dims = obtain_dataloader(args, fold=fold, mode="train")
     test_dl, _ = obtain_dataloader(args, fold=fold, mode="test")
+
+    # # Make a gene list for scgpt if needed
+    # if isinstance(train_dl.dataset, torch.utils.data.Subset):
+    #     args.gene_names = train_dl.dataset.dataset.genes
+    # else:
+    #     args.gene_names = train_dl.dataset.genes
 
     # Initialize the loss function
     if args.loss_fn == 'cox':

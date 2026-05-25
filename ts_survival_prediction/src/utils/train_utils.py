@@ -1,9 +1,7 @@
 import torch.optim as optim
 import os
 import json
-from transformers import (get_constant_schedule_with_warmup, 
-                         get_linear_schedule_with_warmup, 
-                         get_cosine_schedule_with_warmup)
+from .schedule_warmups import get_constant_schedule_with_warmup, get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 
 def get_optim(args, model):
     """Get the specified optimizer, adapted from https://github.com/mahmoodlab/MMP/blob/main/src/utils/utils.py """

@@ -10,6 +10,8 @@ from utils.train_utils import save_exp_settings
 from survival.train import survival_train
 from survival.test import survival_test
 
+import warnings
+warnings.filterwarnings("ignore")
 
 def k_fold_test(args, device):
     """ K-fold cross-validation - Test only. """
@@ -57,7 +59,8 @@ def k_fold_train(args, device):
     
 def main(args):
     """ K-fold cross-validation for Survival Prediction """
-    wandb.init(project="survival-prediction-with-adapters", config=vars(args))
+    if not args.test:
+        wandb.init(project="survival-prediction-with-adapters", config=vars(args))
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -75,7 +78,8 @@ def main(args):
         sys.exit("Unspecified mode! Abborting..")
     
     print("FINISHED!\n\n\n")
-    wandb.finish()
+    if not args.test:
+        wandb.finish()
     
 
 if __name__ == "__main__":
@@ -94,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=2)
 
     # Model args
-    parser.add_argument('--model', default='mlp', choices=['mlp', 'snn', 'pathway_mlp', 'pathway_snn', 'gene_dimaf'], help='Model type')
+    parser.add_argument('--model', default='mlp', choices=['mlp', 'snn', 'pathway_mlp', 'pathway_snn', 'gene_dimaf', 'scgpt'], help='Model type')
     parser.add_argument('--network_size', default='small', choices=['small', 'big'], help='Size of the network')
     parser.add_argument('--aggregation_type', default='concat', choices=['concat', 'sum', 'mean', 'wm'])
 
@@ -119,6 +123,11 @@ if __name__ == "__main__":
 
     # limiting training set size args
     parser.add_argument('--train_subset', type=float, default=1, help='how big part of a training set should be used')
+
+    # # Lora for scgpt finetuning
+    # parser.add_argument("--lora", action="store_true", help="Finetune only subset of the model")
+    # parser.add_argument("--test", action="store_true", help="Skip wandb logging")
+    # parser.add_argument('--model_path', default="../../papers/scgpt/save/whole_human",help='scgpt directory')
 
     args = parser.parse_args()
 

@@ -16,7 +16,22 @@ def obtain_model(args, loss_fn, num_classes, rna_dims, device):
     network_size_dict = {'small': [256, 256], 'big': [1024, 1024, 1024, 256]}
 
     # Obtain the model
-    if args.model == 'mlp':
+    if args.model == 'scgpt':
+        from model.scgpt_survival import scGPTSurvivalModel
+        if not hasattr(args, 'gene_names'):
+            raise AttributeError("args must contain 'gene_names' list. Ensure it is set after loading the dataloader.")
+        gene_names = args.gene_names
+        lora_enabled = getattr(args, 'lora', True) 
+        n_bins = getattr(args, 'n_bins', 51)
+        
+        model = scGPTSurvivalModel(
+            model_path=args.model_path,
+            gene_names=gene_names,
+            n_bins=n_bins,
+            lora=lora_enabled,
+            loss_fn=loss_fn
+        )
+    elif args.model == 'mlp':
         model = FNN(rna_dims=rna_dims, block_type='mlp', hidden_layers=network_size_dict[args.network_size], loss_fn=loss_fn, num_classes=num_classes)
     elif args.model == 'snn':
         model = FNN(rna_dims=rna_dims, block_type='snn', hidden_layers=network_size_dict[args.network_size], loss_fn=loss_fn, num_classes=num_classes)

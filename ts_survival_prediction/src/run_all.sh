@@ -2,21 +2,21 @@
 #SBATCH --partition=gpua6000
 #SBATCH --job-name=survival_pred
 source /scratch/2370352/conda/etc/profile.d/conda.sh
-conda activate myenv
+conda activate scgpt2
 
 echo "Using python from:"
 which python
 
-EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp_finetuned_scgpt"
+EXPR_PATH="/scratch/2370352/my-research/data/0_data_for_mlp"
 # EXPR_PATH="/scratch/2370352/my-research/adapter_premium/embeddings"
-DATA_TYPE='json'
+DATA_TYPE='csv'
 
 # Zmienne bazowe dla ścieżek
 CLINICAL_BASE_DIR="/scratch/2370352/my-research/data/clinical_data"
 
 # mlp snn pathway_mlp pathway_snn gene_dimaf
-MODEL="mlp"
-EXP_CODE="finetuned_scgpt"
+MODEL="scgpt"
+EXP_CODE="SCGPT_finetuned_to_survival"
 
 for file in "$EXPR_PATH"/*; do
     omics_type=$(basename "$file")
@@ -56,7 +56,8 @@ for file in "$EXPR_PATH"/*; do
         --omics_type "$omics_type" \
         --data_type $DATA_TYPE \
         --folds 5 \
-        --expression_data_path "$EXPR_PATH"
+        --expression_data_path "$EXPR_PATH" \
+        --test
 
     # TEST
     python main.py \
@@ -67,6 +68,7 @@ for file in "$EXPR_PATH"/*; do
         --data_type $DATA_TYPE \
         --exp_code $EXP_CODE \
         --omics_type "$omics_type" \
-        --expression_data_path "$EXPR_PATH"
+        --expression_data_path "$EXPR_PATH" \
+        --test
 
 done

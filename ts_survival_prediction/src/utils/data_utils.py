@@ -49,6 +49,8 @@ def obtain_data_type(args):
         return 'rna'
     elif args.model in ['pathway_mlp', 'pathway_snn', 'gene_dimaf']:
         return 'pathways'
+    elif args.model in ['scgpt']:
+        return 'scgpt'
     else:
         raise ValueError(f"Omics type of model {args.model} not recognized.")
 
