@@ -7,7 +7,7 @@
 
 # ── ENV ────────────────────────────────────────────────────────────────
 source /scratch/2370352/conda/etc/profile.d/conda.sh
-conda activate scgpt
+conda activate scgpt2
 
 export WANDB_RUN_ID=$(python -c "import wandb; print(wandb.util.generate_id())")
 export WANDB_RESUME="allow"
@@ -25,7 +25,7 @@ EXP_CODE=${EXP_CODE:-"finetuned"}
 DATA_FILENAME=$(basename "$DATA_PATH")
 DATA_FILENAME="${DATA_FILENAME%.*}"
 
-SAVE_CONFIG="merged_all_samples_hvg2000_bins51_lora_20260506_152407"
+SAVE_CONFIG="merged_all_samples_hvg22000_bins51_lora_20260518_113329"
 CHECKPOINT_BASE_DIR="checkpoints_finetune/${SAVE_CONFIG}"
 
 FILENAME="TCGA-BRCA.star_tpm"
@@ -54,11 +54,12 @@ do
     EMB_SAVE_DIR="embeddings/finetuned/${SAVE_CONFIG}/epoch_${i}/"
 
     echo "Generating embeddings ..."
-    conda activate scgpt # Upewnij się, że jesteś w dobrym env
+    conda activate scgpt2 # Upewnij się, że jesteś w dobrym env
     python get_finetuned_scgpt_embeddings.py \
         --checkpoint_dir "$CHECKPOINT_BASE_DIR" \
         --model_name "$MODEL_NAME" \
-        --save_path "$EMB_SAVE_DIR"
+        --save_path "$EMB_SAVE_DIR" \
+        --data_path "$DATA_PATH"
 
     # Pobierz nazwę pliku json z folderu embeddingów
     OMICS_TYPE=$(find "$EMB_SAVE_DIR" -maxdepth 1 -name "*.json" -exec basename {} \; | head -n 1)
